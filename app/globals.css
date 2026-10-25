@@ -1,0 +1,72 @@
+@import "tailwindcss";
+
+:root {
+  --background: #F3EDE3;
+  --foreground: #35312D;
+  --roasted-brown: #76533F;
+  --soft-taupe: #D6C4AB;
+  --espresso: #35312D;
+  --color-slate-50: #FBF9F5;
+  --color-slate-100: #F3EDE3;
+  --color-slate-200: #E7DCCB;
+  --color-slate-300: #D6C4AB;
+  --color-slate-400: #B6A18A;
+  --color-slate-500: #927B65;
+  --color-slate-600: #705B49;
+  --color-slate-700: #574739;
+  --color-slate-800: #403932;
+  --color-slate-900: #35312D;
+  --color-emerald-50: #F7F3EC;
+  --color-emerald-100: #EFE7DB;
+  --color-emerald-200: #E5D8C5;
+  --color-emerald-300: #D6C4AB;
+  --color-emerald-400: #B99A78;
+  --color-emerald-500: #987253;
+  --color-emerald-600: #856146;
+  --color-emerald-700: #76533F;
+  --color-emerald-800: #624432;
+  --color-emerald-900: #4B382D;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(circle at top, rgba(214, 196, 171, 0.22), transparent 30%),
+    radial-gradient(circle at bottom right, rgba(118, 83, 63, 0.08), transparent 30%),
+    var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+button,
+a {
+  transition: all 200ms ease;
+}
+
+button {
+  cursor: pointer;
+}
+
+img {
+  max-width: 100%;
+  display: block;
+}
+
+::selection {
+  background: rgba(118, 83, 63, 0.2);
+}
