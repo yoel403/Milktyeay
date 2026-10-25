@@ -144,7 +144,7 @@ export default function Home() {
             </h1>
 
             <p className="mt-6 max-w-xl text-base leading-7 text-[#F3EDE3]/80 sm:text-lg sm:leading-8">
-              Premium wellness essentials for energy, sleep, focus, and recovery—delivered direct to your door with a simple subscription that fits your routine.
+            Authentic Roasted Jasmine & Oolong Milk Tea. Ready to sip, anytime and anywhere you need a sweet escape.
             </p>
 
             <div className="mt-8 flex flex-col gap-4 sm:flex-row">
@@ -152,7 +152,7 @@ export default function Home() {
                 href="#shop"
                 className="inline-flex items-center justify-center rounded-full bg-[#D6C4AB] px-6 py-3 text-base font-semibold text-[#35312D] shadow-lg shadow-black/10 transition hover:bg-[#E6D9C7]"
               >
-                Shop best sellers
+                Shop best Products
               </a>
               <a
                 href="#support"
@@ -162,14 +162,14 @@ export default function Home() {
               </a>
             </div>
 
-            <div className="mt-10 grid gap-3 sm:grid-cols-3">
+            {/* <div className="mt-10 grid gap-3 sm:grid-cols-3">
               {highlights.map((item) => (
                 <div key={item.label} className="border-l border-[#D6C4AB]/35 py-1 pl-4 first:border-0 first:pl-0">
                   <div className="text-xl font-black text-white">{item.value}</div>
                   <div className="mt-1 text-xs text-[#F3EDE3]/70">{item.label}</div>
                 </div>
               ))}
-            </div>
+            </div> */}
           </div>
         </section>
 
@@ -331,7 +331,7 @@ export default function Home() {
           </div>
 
           <div className="flex items-center justify-between gap-2 border-t border-white/15 pt-3 text-[10px] text-emerald-50/50 sm:text-xs">
-            <span>© Milktyeay · Made for your everyday ritual.</span>
+            <span>© Milktyeay · Made for you.</span>
             <a href="#top" className="w-fit transition hover:text-white">Back to top ↑</a>
           </div>
         </footer>
