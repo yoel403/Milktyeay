@@ -26,7 +26,9 @@ NEXT_PUBLIC_MIDTRANS_IS_PRODUCTION=false
 
 Keep `SUPABASE_SERVICE_ROLE_KEY` and `MIDTRANS_SERVER_KEY` private; never prefix them with `NEXT_PUBLIC_` or expose them in browser code. The Midtrans client key is intended to be public.
 
-The order page loads active products directly from the Supabase `products` table. Run the updated `supabase/schema.sql` in the Supabase SQL editor to add the `is_active` column and payment fields to an existing database. Existing products default to active; set `is_active` to `false` to hide a product from the order menu. The Supabase environment variables and product table must be configured for drinks to appear; the page does not use built-in demo products.
+The homepage and order page load active products directly from the Supabase `products` table. Run the updated `supabase/schema.sql` in the Supabase SQL editor to add the `is_active` column and payment fields to an existing database. Existing products default to active; set `is_active` to `false` to hide a product from the storefront and order menu. The Supabase environment variables and product table must be configured for drinks to appear; the pages do not use built-in demo products.
+
+The homepage review section accepts customer reviews with an anonymous or named display option. Run the updated `supabase/schema.sql` to create the `reviews` table and its policies on a fresh setup. Reviews are stored as pending and only appear publicly after setting `is_approved` to `true` in Supabase. Submissions are written by the server using `SUPABASE_SERVICE_ROLE_KEY`; approved reviews are readable through the public anon client. If the table already exists, apply the review `GRANT SELECT` and read-policy statements from `supabase/schema.sql` in the Supabase SQL editor.
 
 ## Midtrans payments
 

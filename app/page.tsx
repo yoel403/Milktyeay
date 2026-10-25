@@ -1,7 +1,47 @@
 "use client";
 
 import Image from "next/image";
-import { useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
+import { supabase } from "@/lib/supabase";
+
+type Product = {
+  id: number;
+  name: string;
+  category: string;
+  price: number;
+  unit: string;
+  badge: string;
+  description: string;
+  accent: string;
+  emoji: string;
+  imageUrl: string | null;
+};
+
+type ProductRow = {
+  id: number;
+  name: string;
+  category: string | null;
+  price: number | string;
+  badge: string | null;
+  description: string | null;
+  emoji: string | null;
+  image_url: string | null;
+  sizes: unknown;
+};
+
+type Review = {
+  id: string;
+  review_text: string;
+  display_name: string | null;
+  is_anonymous: boolean;
+};
+
+const productAccents = [
+  "from-[#D6C4AB] via-[#E8DCCB] to-[#F3EDE3]",
+  "from-[#C8A987] via-[#E8DCCB] to-[#F3EDE3]",
+  "from-[#BFAE9C] via-[#E7DCCB] to-[#F3EDE3]",
+  "from-[#C7A68D] via-[#E7DCCB] to-[#F3EDE3]",
+];
 
 const formatRupiah = (value: number) =>
   new Intl.NumberFormat("id-ID", {
@@ -10,92 +50,173 @@ const formatRupiah = (value: number) =>
     maximumFractionDigits: 0,
   }).format(Math.round(value));
 
-const products = [
-  {
-    id: 1,
-    name: "Daily Greens",
-    category: "Wellness",
-    price: 34,
-    unit: "30 servings",
-    badge: "Best seller",
-    description: "A daily blend of spinach, matcha, and digestive botanicals.",
-    accent: "from-[#D6C4AB] via-[#E8DCCB] to-[#F3EDE3]",
-    emoji: "🥬",
-  },
-  {
-    id: 2,
-    name: "Focus Fuel",
-    category: "Performance",
-    price: 28,
-    unit: "20 packets",
-    badge: "New",
-    description: "Smooth caffeine + nootropic support for long-form focus.",
-    accent: "from-[#C8A987] via-[#E8DCCB] to-[#F3EDE3]",
-    emoji: "⚡",
-  },
-  {
-    id: 3,
-    name: "Night Reset",
-    category: "Recovery",
-    price: 32,
-    unit: "30 gummies",
-    badge: "Sleep + calm",
-    description: "Magnesium-rich evening ritual for deeper, lower-stress sleep.",
-    accent: "from-[#BFAE9C] via-[#E7DCCB] to-[#F3EDE3]",
-    emoji: "🌙",
-  },
-  {
-    id: 4,
-    name: "Protein Core",
-    category: "Recovery",
-    price: 38,
-    unit: "12 scoops",
-    badge: "High protein",
-    description: "Grass-fed whey isolate with vanilla bean and gut-friendly enzymes.",
-    accent: "from-[#C7A68D] via-[#E7DCCB] to-[#F3EDE3]",
-    emoji: "🥤",
-  },
-];
-
 const highlights = [
   { label: "4.9/5 average rating", value: "12k+" },
   { label: "Orders shipped this week", value: "3.4k" },
   { label: "Ingredients sourced", value: "100%" },
 ];
 
-const reviews = [
-  {
-    name: "Sofia R.",
-    quote:
-      "The experience feels premium from the first click. My bundle arrived in under 48 hours and tastes amazing.",
-  },
-  {
-    name: "Marcus T.",
-    quote:
-      "I finally found a wellness stack that feels easy to keep up with. The focus blend is a daily staple.",
-  },
-  {
-    name: "Leah C.",
-    quote:
-      "The checkout process is seamless, and the formulas actually deliver. It feels like a brand built for real routines.",
-  },
-];
-
 export default function Home() {
-  const [currentSlide, setCurrentSlide] = useState(0);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [isLoadingProducts, setIsLoadingProducts] = useState(true);
+  const [productLoadError, setProductLoadError] = useState<string | null>(null);
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [isLoadingReviews, setIsLoadingReviews] = useState(true);
+  const [reviewLoadError, setReviewLoadError] = useState<string | null>(null);
+  const [reviewText, setReviewText] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [isAnonymous, setIsAnonymous] = useState(true);
+  const [isSubmittingReview, setIsSubmittingReview] = useState(false);
+  const [reviewSubmitMessage, setReviewSubmitMessage] = useState<string | null>(null);
+  const [reviewSubmitError, setReviewSubmitError] = useState<string | null>(null);
 
-  const visibleProducts = Array.from({ length: 3 }, (_, index) => {
-    const productIndex = (currentSlide + index) % products.length;
-    return products[productIndex];
-  });
+  useEffect(() => {
+    let isMounted = true;
 
-  const goToPreviousSlide = () => {
-    setCurrentSlide((previous) => (previous === 0 ? products.length - 1 : previous - 1));
-  };
+    async function loadProducts() {
+      if (!supabase) {
+        setProductLoadError(
+          "Supabase is not configured. Add your project URL and anon key to .env.local.",
+        );
+        setIsLoadingProducts(false);
+        return;
+      }
 
-  const goToNextSlide = () => {
-    setCurrentSlide((previous) => (previous + 1) % products.length);
-  };
+      try {
+        const { data, error } = await supabase
+          .from("products")
+          .select("id, name, category, price, badge, description, emoji, image_url, sizes")
+          .eq("is_active", true)
+          .order("id", { ascending: true });
+
+        if (error) {
+          throw error;
+        }
+
+        if (!isMounted) {
+          return;
+        }
+
+        const mappedProducts = (data ?? []).slice(0, 3).map((item: ProductRow, index) => {
+          const firstSize = Array.isArray(item.sizes) ? item.sizes[0] : null;
+          const unit =
+            firstSize &&
+            typeof firstSize === "object" &&
+            "volume" in firstSize &&
+            typeof firstSize.volume === "string"
+              ? firstSize.volume
+              : "Freshly prepared";
+
+          return {
+            id: Number(item.id),
+            name: String(item.name),
+            category: String(item.category ?? "Beverage"),
+            price: Number(item.price),
+            unit,
+            badge: String(item.badge ?? "Featured"),
+            description: String(item.description ?? "Freshly prepared drink."),
+            accent: productAccents[index % productAccents.length],
+            emoji: String(item.emoji ?? "☕"),
+            imageUrl:
+              typeof item.image_url === "string" && item.image_url.trim()
+                ? item.image_url.trim()
+                : null,
+          };
+        });
+
+        setProducts(mappedProducts);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error("Failed to fetch homepage products from Supabase:", message);
+        if (isMounted) {
+          setProductLoadError(`Could not load products: ${message}`);
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoadingProducts(false);
+        }
+      }
+    }
+
+    async function loadReviews() {
+      if (!supabase) {
+        setReviewLoadError(
+          "Supabase is not configured. Add your project URL and anon key to .env.local.",
+        );
+        setIsLoadingReviews(false);
+        return;
+      }
+
+      try {
+        const { data, error } = await supabase
+          .from("reviews")
+          .select("id, review_text, display_name, is_anonymous")
+          .eq("is_approved", true)
+          .order("created_at", { ascending: false })
+          .limit(6);
+
+        if (error) {
+          throw error;
+        }
+
+        if (isMounted) {
+          setReviews((data ?? []) as Review[]);
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error("Failed to fetch customer reviews from Supabase:", message);
+        if (isMounted) {
+          setReviewLoadError(`Could not load reviews: ${message}`);
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoadingReviews(false);
+        }
+      }
+    }
+
+    void loadProducts();
+    void loadReviews();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  async function submitReview(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setReviewSubmitMessage(null);
+    setReviewSubmitError(null);
+    setIsSubmittingReview(true);
+
+    try {
+      const response = await fetch("/api/reviews", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          review: reviewText,
+          isAnonymous,
+          displayName: isAnonymous ? "" : displayName,
+        }),
+      });
+      const result = (await response.json()) as { error?: unknown; message?: unknown };
+
+      if (!response.ok) {
+        throw new Error(
+          typeof result.error === "string" ? result.error : "Could not submit your review.",
+        );
+      }
+
+      setReviewText("");
+      setDisplayName("");
+      setReviewSubmitMessage("Thank you! Your review has been submitted");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setReviewSubmitError(message);
+    } finally {
+      setIsSubmittingReview(false);
+    }
+  }
 
   return (
     <main id="top" className="min-h-screen bg-[#F3EDE3] text-[#35312D]">
@@ -116,7 +237,6 @@ export default function Home() {
             <nav className="hidden items-center gap-7 text-sm font-medium text-slate-600 md:flex">
               <a href="#shop">Shop</a>
               <a href="#reviews">Reviews</a>
-              <a href="#support">Support</a>
             </nav>
 
             <a
@@ -177,100 +297,192 @@ export default function Home() {
           <div className="mb-6 flex items-center justify-between gap-4">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">Featured picks</p>
-              <h2 className="mt-2 text-3xl font-black tracking-tight text-slate-900">A ritual worth repeating</h2>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={goToPreviousSlide}
-                className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-lg text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
-                aria-label="Previous featured product"
-              >
-                ←
-              </button>
-              <button
-                type="button"
-                onClick={goToNextSlide}
-                className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-lg text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
-                aria-label="Next featured product"
-              >
-                →
-              </button>
+              <h2 className="mt-2 text-3xl font-black tracking-tight text-slate-900">Favorites</h2>
             </div>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-3">
-            {visibleProducts.map((product) => (
-              <article
-                key={`${product.id}-${product.name}`}
-                className="overflow-hidden rounded-[1.75rem] border border-slate-200 bg-[#fafaf9] p-4 shadow-sm"
-              >
-                <div className={`rounded-[1.5rem] bg-gradient-to-br ${product.accent} p-4`}>
-                  <div className="flex items-center justify-between">
-                    <span className="rounded-full bg-white/80 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-700">
+          <div className="flex snap-x snap-mandatory flex-nowrap justify-start gap-4 overflow-x-auto scroll-smooth -mx-5 px-5 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:mx-0 sm:flex-wrap sm:justify-center sm:overflow-visible sm:px-0 sm:pb-0">
+            {isLoadingProducts ? (
+              <p role="status" className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-5 text-sm text-slate-600">
+                Loading featured products...
+              </p>
+            ) : productLoadError ? (
+              <p role="alert" className="w-full rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-800">
+                {productLoadError}
+              </p>
+            ) : products.length === 0 ? (
+              <p className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-5 text-sm text-slate-600">
+                There are no products available right now.
+              </p>
+            ) : (
+              products.map((product) => (
+                <article
+                  key={product.id}
+                  className="w-[72%] max-w-[280px] shrink-0 snap-center overflow-hidden rounded-[1.75rem] border border-slate-200 bg-[#fafaf9] p-3 shadow-sm sm:w-[calc(50%_-_0.5rem)] sm:max-w-none sm:shrink sm:snap-none sm:p-4 lg:w-[calc(33.333%_-_0.75rem)]"
+                >
+                  <div className={`relative flex aspect-video items-center justify-center overflow-hidden rounded-[1.5rem] bg-gradient-to-br ${product.accent} sm:aspect-[4/3]`}>
+                    {product.imageUrl ? (
+                      <Image
+                        src={product.imageUrl}
+                        alt={product.name}
+                        fill
+                        sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                        className="object-cover"
+                      />
+                    ) : (
+                      <span className="text-6xl" aria-hidden="true">{product.emoji}</span>
+                    )}
+                    <span className="absolute left-4 top-4 rounded-full bg-white/85 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-700">
                       {product.badge}
                     </span>
-                    <span className="text-4xl">{product.emoji}</span>
                   </div>
 
-                  <div className="mt-12">
-                    <p className="text-xs uppercase tracking-[0.18em] text-slate-500">{product.category}</p>
-                    <h3 className="mt-2 text-2xl font-black text-slate-900">{product.name}</h3>
+                  <div className="mt-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.18em] text-slate-500">{product.category}</p>
+                        <h3 className="mt-2 text-xl font-black text-slate-900 sm:text-2xl">{product.name}</h3>
+                      </div>
+                      <span className="shrink-0 text-base font-black text-slate-900 sm:text-lg">{formatRupiah(product.price)}</span>
+                    </div>
+                    <p className="mt-3 text-sm text-slate-500">{product.unit}</p>
+                    <p className="mt-3 text-sm leading-6 text-slate-600">{product.description}</p>
                   </div>
-                </div>
 
-                <div className="mt-4 flex items-center justify-between text-sm text-slate-500">
-                  <span>{product.unit}</span>
-                  <span className="text-lg font-black text-slate-900">{formatRupiah(product.price)}</span>
-                </div>
-
-                <p className="mt-3 text-sm leading-6 text-slate-600">{product.description}</p>
-
-                <a
-                  href="/order"
-                  className="mt-4 inline-flex w-full items-center justify-center rounded-full bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
-                >
-                  Explore product
-                </a>
-              </article>
-            ))}
-          </div>
-
-          <div className="mt-5 flex justify-center gap-2">
-            {products.map((product, index) => (
-              <button
-                key={product.id}
-                type="button"
-                onClick={() => setCurrentSlide(index)}
-                className={[
-                  "h-2.5 rounded-full transition-all",
-                  index === currentSlide ? "w-8 bg-slate-900" : "w-2.5 bg-slate-300 hover:bg-slate-400",
-                ].join(" ")}
-                aria-label={`Go to slide ${index + 1}`}
-              />
-            ))}
+                  <a
+                    href="/order"
+                    className="mt-4 inline-flex w-full items-center justify-center rounded-full bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
+                  >
+                    Explore product
+                  </a>
+                </article>
+              ))
+            )}
           </div>
         </section>
 
         <section id="reviews" className="mx-5 mt-16 sm:mx-8 lg:mx-[5vw]">
           <div className="mb-6">
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">Customer love</p>
-            <h2 className="mt-2 text-3xl font-black tracking-tight text-slate-900">Real routines, real results</h2>
+            <h2 className="mt-2 text-3xl font-black tracking-tight text-slate-900">Share your experience</h2>
           </div>
 
-          <div className="grid gap-5 md:grid-cols-3">
-            {reviews.map((review) => (
-              <article key={review.name} className="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm">
-                <div className="mb-4 flex items-center gap-1 text-amber-400">
-                  {Array.from({ length: 5 }).map((_, index) => (
-                    <span key={`${review.name}-${index}`}>★</span>
+          <div className="grid gap-8 lg:grid-cols-[1fr_1fr]">
+            <form
+              onSubmit={submitReview}
+              className="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-7"
+            >
+              <label htmlFor="review-text" className="block text-sm font-semibold text-slate-900">
+                Your review
+              </label>
+              <textarea
+                id="review-text"
+                name="review"
+                value={reviewText}
+                onChange={(event) => setReviewText(event.target.value)}
+                required
+                minLength={10}
+                maxLength={1000}
+                rows={5}
+                placeholder="Tell us what you think about your Milktyeay experience..."
+                className="mt-2 w-full resize-y rounded-xl border border-slate-300 bg-white p-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-[#76533F] focus:ring-2 focus:ring-[#76533F]/20"
+              />
+              <p className="mt-1 text-right text-xs text-slate-500">{reviewText.length}/1000</p>
+
+              <fieldset className="mt-4">
+                <legend className="text-sm font-semibold text-slate-900">How should we show your identity?</legend>
+                <div className="mt-3 flex flex-col gap-3 sm:flex-row">
+                  <label className="flex items-center gap-2 text-sm text-slate-700">
+                    <input
+                      type="radio"
+                      name="review-identity"
+                      checked={isAnonymous}
+                      onChange={() => setIsAnonymous(true)}
+                      className="accent-[#76533F]"
+                    />
+                    Submit anonymously
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-slate-700">
+                    <input
+                      type="radio"
+                      name="review-identity"
+                      checked={!isAnonymous}
+                      onChange={() => setIsAnonymous(false)}
+                      className="accent-[#76533F]"
+                    />
+                    Show my name
+                  </label>
+                </div>
+              </fieldset>
+
+              {!isAnonymous ? (
+                <div className="mt-4">
+                  <label htmlFor="review-name" className="block text-sm font-semibold text-slate-900">
+                    Name to display
+                  </label>
+                  <input
+                    id="review-name"
+                    name="displayName"
+                    value={displayName}
+                    onChange={(event) => setDisplayName(event.target.value)}
+                    required
+                    maxLength={80}
+                    autoComplete="name"
+                    className="mt-2 w-full rounded-xl border border-slate-300 bg-white p-3 text-sm text-slate-900 outline-none transition focus:border-[#76533F] focus:ring-2 focus:ring-[#76533F]/20"
+                  />
+                </div>
+              ) : null}
+
+              {reviewSubmitError ? (
+                <p role="alert" className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-800">
+                  {reviewSubmitError}
+                </p>
+              ) : null}
+              {reviewSubmitMessage ? (
+                <p role="status" className="mt-4 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">
+                  {reviewSubmitMessage}
+                </p>
+              ) : null}
+
+              <button
+                type="submit"
+                disabled={isSubmittingReview}
+                className="mt-5 inline-flex items-center justify-center rounded-full bg-[#76533F] px-6 py-3 text-sm font-semibold text-white transition hover:bg-[#624432] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isSubmittingReview ? "Submitting..." : "Submit review"}
+              </button>
+              <p className="mt-3 text-xs leading-5 text-slate-500">
+                Reviews are checked before appearing publicly. Anonymous reviews will not display your name.
+              </p>
+            </form>
+
+            <div>
+              <h3 className="text-xl font-bold text-slate-900">Customer reviews</h3>
+              {isLoadingReviews ? (
+                <p role="status" className="mt-4 rounded-2xl border border-slate-200 bg-white p-5 text-sm text-slate-600">
+                  Loading customer reviews...
+                </p>
+              ) : reviewLoadError ? (
+                <p role="alert" className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-800">
+                  {reviewLoadError}
+                </p>
+              ) : reviews.length === 0 ? (
+                <p className="mt-4 rounded-2xl border border-slate-200 bg-white p-5 text-sm text-slate-600">
+                  Be the first to share your experience.
+                </p>
+              ) : (
+                <div className="mt-4 grid gap-4">
+                  {reviews.map((review) => (
+                    <article key={review.id} className="rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm">
+                      <p className="whitespace-pre-wrap text-sm leading-6 text-slate-600">“{review.review_text}”</p>
+                      <p className="mt-4 border-t border-slate-200 pt-3 text-sm font-semibold text-slate-900">
+                        {review.is_anonymous ? "Anonymous" : review.display_name}
+                      </p>
+                    </article>
                   ))}
                 </div>
-                <p className="text-base leading-7 text-slate-600">“{review.quote}”</p>
-                <div className="mt-5 border-t border-slate-200 pt-4 text-sm font-semibold text-slate-900">{review.name}</div>
-              </article>
-            ))}
+              )}
+            </div>
           </div>
         </section>
 

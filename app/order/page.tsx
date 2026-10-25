@@ -685,9 +685,9 @@ export default function OrderPage() {
               </div>
             ) : null}
 
-            <div className="mt-4 rounded-2xl border border-[#c4ad8f]/25 bg-[#c4ad8f]/10 p-3 text-sm text-[#eadbc8]">
+            {/* <div className="mt-4 rounded-2xl border border-[#c4ad8f]/25 bg-[#c4ad8f]/10 p-3 text-sm text-[#eadbc8]">
               30-day satisfaction guarantee · secure payment
-            </div>
+            </div> */}
           </aside>
         </div>
       </div>

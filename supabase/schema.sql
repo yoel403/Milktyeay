@@ -64,39 +64,67 @@ create table if not exists public.order_items (
 alter table public.order_items
   add column if not exists size text not null default 'Classic';
 
+create table if not exists public.reviews (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  review_text text not null check (char_length(btrim(review_text)) between 10 and 1000),
+  display_name text,
+  is_anonymous boolean not null default true,
+  is_approved boolean not null default false,
+  constraint reviews_identity_consistency check (
+    (is_anonymous and display_name is null)
+    or (not is_anonymous and display_name is not null and char_length(btrim(display_name)) between 1 and 80)
+  )
+);
+
 alter table public.products enable row level security;
 alter table public.orders enable row level security;
 alter table public.order_items enable row level security;
+alter table public.reviews enable row level security;
 
-create policy if not exists "Allow public read products"
+drop policy if exists "Allow public read products" on public.products;
+create policy "Allow public read products"
 on public.products
 for select
 to public
 using (true);
 
-create policy if not exists "Allow public insert orders"
+drop policy if exists "Allow public insert orders" on public.orders;
+create policy "Allow public insert orders"
 on public.orders
 for insert
 to public
 with check (true);
 
-create policy if not exists "Allow public insert order items"
+drop policy if exists "Allow public insert order items" on public.order_items;
+create policy "Allow public insert order items"
 on public.order_items
 for insert
 to public
 with check (true);
 
-create policy if not exists "Allow public select orders"
+drop policy if exists "Allow public select orders" on public.orders;
+create policy "Allow public select orders"
 on public.orders
 for select
 to public
 using (true);
 
-create policy if not exists "Allow public select order items"
+drop policy if exists "Allow public select order items" on public.order_items;
+create policy "Allow public select order items"
 on public.order_items
 for select
 to public
 using (true);
+
+grant select on public.reviews to anon, authenticated;
+
+drop policy if exists "Allow public read approved reviews" on public.reviews;
+create policy "Allow public read approved reviews"
+on public.reviews
+for select
+to anon, authenticated
+using (is_approved = true);
 
 insert into public.products (name, category, price, badge, description, accent, emoji, type, sizes, toppings)
 values
