@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
 type Product = {
@@ -63,12 +63,6 @@ export default function Home() {
   const [reviews, setReviews] = useState<Review[]>([]);
   const [isLoadingReviews, setIsLoadingReviews] = useState(true);
   const [reviewLoadError, setReviewLoadError] = useState<string | null>(null);
-  const [reviewText, setReviewText] = useState("");
-  const [displayName, setDisplayName] = useState("");
-  const [isAnonymous, setIsAnonymous] = useState(true);
-  const [isSubmittingReview, setIsSubmittingReview] = useState(false);
-  const [reviewSubmitMessage, setReviewSubmitMessage] = useState<string | null>(null);
-  const [reviewSubmitError, setReviewSubmitError] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -182,41 +176,6 @@ export default function Home() {
       isMounted = false;
     };
   }, []);
-
-  async function submitReview(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setReviewSubmitMessage(null);
-    setReviewSubmitError(null);
-    setIsSubmittingReview(true);
-
-    try {
-      const response = await fetch("/api/reviews", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          review: reviewText,
-          isAnonymous,
-          displayName: isAnonymous ? "" : displayName,
-        }),
-      });
-      const result = (await response.json()) as { error?: unknown; message?: unknown };
-
-      if (!response.ok) {
-        throw new Error(
-          typeof result.error === "string" ? result.error : "Could not submit your review.",
-        );
-      }
-
-      setReviewText("");
-      setDisplayName("");
-      setReviewSubmitMessage("Thank you! Your review has been submitted");
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      setReviewSubmitError(message);
-    } finally {
-      setIsSubmittingReview(false);
-    }
-  }
 
   return (
     <main id="top" className="min-h-screen bg-[#F3EDE3] text-[#35312D]">
@@ -363,126 +322,37 @@ export default function Home() {
 
         <section id="reviews" className="mx-5 mt-16 sm:mx-8 lg:mx-[5vw]">
           <div className="mb-6">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">Customer love</p>
-            <h2 className="mt-2 text-3xl font-black tracking-tight text-slate-900">Share your experience</h2>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">Customer love</p>
+              <h2 className="mt-2 text-3xl font-black tracking-tight text-slate-900">Customer reviews</h2>
+            </div>
           </div>
 
-          <div className="grid gap-8 lg:grid-cols-[1fr_1fr]">
-            <form
-              onSubmit={submitReview}
-              className="rounded-[1.75rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-7"
-            >
-              <label htmlFor="review-text" className="block text-sm font-semibold text-slate-900">
-                Your review
-              </label>
-              <textarea
-                id="review-text"
-                name="review"
-                value={reviewText}
-                onChange={(event) => setReviewText(event.target.value)}
-                required
-                minLength={10}
-                maxLength={1000}
-                rows={5}
-                placeholder="Tell us what you think about your Milktyeay experience..."
-                className="mt-2 w-full resize-y rounded-xl border border-slate-300 bg-white p-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-[#76533F] focus:ring-2 focus:ring-[#76533F]/20"
-              />
-              <p className="mt-1 text-right text-xs text-slate-500">{reviewText.length}/1000</p>
-
-              <fieldset className="mt-4">
-                <legend className="text-sm font-semibold text-slate-900">How should we show your identity?</legend>
-                <div className="mt-3 flex flex-col gap-3 sm:flex-row">
-                  <label className="flex items-center gap-2 text-sm text-slate-700">
-                    <input
-                      type="radio"
-                      name="review-identity"
-                      checked={isAnonymous}
-                      onChange={() => setIsAnonymous(true)}
-                      className="accent-[#76533F]"
-                    />
-                    Submit anonymously
-                  </label>
-                  <label className="flex items-center gap-2 text-sm text-slate-700">
-                    <input
-                      type="radio"
-                      name="review-identity"
-                      checked={!isAnonymous}
-                      onChange={() => setIsAnonymous(false)}
-                      className="accent-[#76533F]"
-                    />
-                    Show my name
-                  </label>
-                </div>
-              </fieldset>
-
-              {!isAnonymous ? (
-                <div className="mt-4">
-                  <label htmlFor="review-name" className="block text-sm font-semibold text-slate-900">
-                    Name to display
-                  </label>
-                  <input
-                    id="review-name"
-                    name="displayName"
-                    value={displayName}
-                    onChange={(event) => setDisplayName(event.target.value)}
-                    required
-                    maxLength={80}
-                    autoComplete="name"
-                    className="mt-2 w-full rounded-xl border border-slate-300 bg-white p-3 text-sm text-slate-900 outline-none transition focus:border-[#76533F] focus:ring-2 focus:ring-[#76533F]/20"
-                  />
-                </div>
-              ) : null}
-
-              {reviewSubmitError ? (
-                <p role="alert" className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-800">
-                  {reviewSubmitError}
-                </p>
-              ) : null}
-              {reviewSubmitMessage ? (
-                <p role="status" className="mt-4 rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">
-                  {reviewSubmitMessage}
-                </p>
-              ) : null}
-
-              <button
-                type="submit"
-                disabled={isSubmittingReview}
-                className="mt-5 inline-flex items-center justify-center rounded-full bg-[#76533F] px-6 py-3 text-sm font-semibold text-white transition hover:bg-[#624432] disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {isSubmittingReview ? "Submitting..." : "Submit review"}
-              </button>
-              <p className="mt-3 text-xs leading-5 text-slate-500">
-                Reviews are checked before appearing publicly. Anonymous reviews will not display your name.
+          <div>
+            {isLoadingReviews ? (
+              <p role="status" className="rounded-2xl border border-slate-200 bg-white p-5 text-sm text-slate-600">
+                Loading customer reviews...
               </p>
-            </form>
-
-            <div>
-              <h3 className="text-xl font-bold text-slate-900">Customer reviews</h3>
-              {isLoadingReviews ? (
-                <p role="status" className="mt-4 rounded-2xl border border-slate-200 bg-white p-5 text-sm text-slate-600">
-                  Loading customer reviews...
-                </p>
-              ) : reviewLoadError ? (
-                <p role="alert" className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-800">
-                  {reviewLoadError}
-                </p>
-              ) : reviews.length === 0 ? (
-                <p className="mt-4 rounded-2xl border border-slate-200 bg-white p-5 text-sm text-slate-600">
-                  Be the first to share your experience.
-                </p>
-              ) : (
-                <div className="mt-4 grid gap-4">
-                  {reviews.map((review) => (
-                    <article key={review.id} className="rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm">
-                      <p className="whitespace-pre-wrap text-sm leading-6 text-slate-600">“{review.review_text}”</p>
-                      <p className="mt-4 border-t border-slate-200 pt-3 text-sm font-semibold text-slate-900">
-                        {review.is_anonymous ? "Anonymous" : review.display_name}
-                      </p>
-                    </article>
-                  ))}
-                </div>
-              )}
-            </div>
+            ) : reviewLoadError ? (
+              <p role="alert" className="rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-800">
+                {reviewLoadError}
+              </p>
+            ) : reviews.length === 0 ? (
+              <p className="rounded-2xl border border-slate-200 bg-white p-5 text-sm text-slate-600">
+                Be the first to share your experience.
+              </p>
+            ) : (
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {reviews.map((review) => (
+                  <article key={review.id} className="rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm">
+                    <p className="whitespace-pre-wrap text-sm leading-6 text-slate-600">“{review.review_text}”</p>
+                    <p className="mt-4 border-t border-slate-200 pt-3 text-sm font-semibold text-slate-900">
+                      {review.is_anonymous ? "Anonymous" : review.display_name}
+                    </p>
+                  </article>
+                ))}
+              </div>
+            )}
           </div>
         </section>
 
