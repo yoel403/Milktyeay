@@ -30,6 +30,16 @@ The homepage and order page load active products directly from the Supabase `pro
 
 The homepage review section accepts customer reviews with an anonymous or named display option. Run the updated `supabase/schema.sql` to create the `reviews` table and its policies on a fresh setup. Reviews are stored as pending and only appear publicly after setting `is_approved` to `true` in Supabase. Submissions are written by the server using `SUPABASE_SERVICE_ROLE_KEY`; approved reviews are readable through the public anon client. If the table already exists, apply the review `GRANT SELECT` and read-policy statements from `supabase/schema.sql` in the Supabase SQL editor.
 
+## Admin order dashboard
+
+The private order dashboard is available at `/admin`, with its sign-in page at `/admin/login`. It uses Supabase email/password authentication and only allows addresses listed in the server-side `ADMIN_EMAILS` environment variable (comma-separated). Add the authorized admin account under **Supabase → Authentication → Users** and set its email in your deployment environment, for example:
+
+```env
+ADMIN_EMAILS=owner@example.com
+```
+
+Keep this variable server-only (do not add the `NEXT_PUBLIC_` prefix). The dashboard can review orders, open privately stored QRIS proof links, update payment status and order preparation status (`pending`, `progressing`, or `done`), and see overall order totals plus per-menu and per-topping paid quantities. Paid sales are shown for menu items. Run the updated `supabase/schema.sql` in the SQL editor: it removes public access to `orders` and `order_items`, and normalizes existing order statuses; the admin API reads and updates them using the server-only service-role key after verifying each Supabase access token and admin email.
+
 ## Midtrans payments
 
 Midtrans checkout is currently hidden from the order page while the account is awaiting approval. The existing Snap integration and notification endpoint remain in the project for when it is ready to be enabled again.

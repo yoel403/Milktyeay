@@ -321,7 +321,7 @@ export async function POST(request: Request) {
       console.error("Midtrans Snap transaction creation failed:", snapResult);
       const { error: updateError } = await supabase
         .from("orders")
-        .update({ payment_status: "error", status: "payment_error" })
+        .update({ payment_status: "error" })
         .eq("id", orderId);
       if (updateError) {
         console.error("Failed to mark payment order as errored:", updateError.message);
@@ -337,7 +337,7 @@ export async function POST(request: Request) {
     console.error("Midtrans Snap request failed:", error);
     const { error: updateError } = await supabase
       .from("orders")
-      .update({ payment_status: "error", status: "payment_error" })
+      .update({ payment_status: "error" })
       .eq("id", orderId);
     if (updateError) {
       console.error("Failed to mark payment order as errored:", updateError.message);

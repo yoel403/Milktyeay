@@ -140,7 +140,6 @@ export async function POST(request: Request) {
     .from("orders")
     .update({
       payment_status: paymentStatus,
-      status: paymentStatus,
       midtrans_transaction_id:
         typeof notification.transaction_id === "string"
           ? notification.transaction_id

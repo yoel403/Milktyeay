@@ -39,6 +39,10 @@ create table if not exists public.orders (
 alter table public.orders
   add column if not exists customer_phone text;
 
+update public.orders
+set status = 'pending'
+where status not in ('pending', 'progressing', 'done');
+
 alter table public.orders
   add column if not exists customer_email text;
 
@@ -107,32 +111,11 @@ to public
 using (true);
 
 drop policy if exists "Allow public insert orders" on public.orders;
-create policy "Allow public insert orders"
-on public.orders
-for insert
-to public
-with check (true);
-
 drop policy if exists "Allow public insert order items" on public.order_items;
-create policy "Allow public insert order items"
-on public.order_items
-for insert
-to public
-with check (true);
-
 drop policy if exists "Allow public select orders" on public.orders;
-create policy "Allow public select orders"
-on public.orders
-for select
-to public
-using (true);
-
 drop policy if exists "Allow public select order items" on public.order_items;
-create policy "Allow public select order items"
-on public.order_items
-for select
-to public
-using (true);
+
+revoke all on public.orders, public.order_items from anon, authenticated;
 
 grant select on public.reviews to anon, authenticated;
 
