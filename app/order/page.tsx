@@ -2,23 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
-import Script from "next/script";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-
-type SnapCallbacks = {
-  onSuccess: (result: unknown) => void;
-  onPending: (result: unknown) => void;
-  onError: (result: unknown) => void;
-  onClose: () => void;
-};
-
-declare global {
-  interface Window {
-    snap?: {
-      pay: (token: string, callbacks: SnapCallbacks) => void;
-    };
-  }
-}
 
 type SizeOption = {
   label: string;
@@ -71,15 +56,17 @@ const earthToneProductAccents = [
 ];
 
 export default function OrderPage() {
-  const midtransClientKey = process.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY;
-  const isMidtransProduction = process.env.NEXT_PUBLIC_MIDTRANS_IS_PRODUCTION === "true";
+  const router = useRouter();
   const [products, setProducts] = useState<Product[]>([]);
   const [isLoadingProducts, setIsLoadingProducts] = useState(true);
   const [productLoadError, setProductLoadError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isUploadingProof, setIsUploadingProof] = useState(false);
   const [checkoutMessage, setCheckoutMessage] = useState<string | null>(null);
-  const [paymentMessage, setPaymentMessage] = useState<string | null>(null);
-  const [isSnapReady, setIsSnapReady] = useState(false);
+  const [priceCopyMessage, setPriceCopyMessage] = useState<string | null>(null);
+  const [qrisOrderId, setQrisOrderId] = useState<string | null>(null);
+  const [proofFile, setProofFile] = useState<File | null>(null);
+  const [proofSubmitted, setProofSubmitted] = useState(false);
   const [customerInfo, setCustomerInfo] = useState({
     name: "",
     phone: "",
@@ -274,54 +261,6 @@ export default function OrderPage() {
         .reduce((sum, topping) => sum + topping.price, 0)
     : 0;
 
-  const checkPaymentStatus = async (orderId: string, attempt = 0): Promise<void> => {
-    try {
-      const response = await fetch(
-        `/api/payments/status?order_id=${encodeURIComponent(orderId)}`,
-        { cache: "no-store" },
-      );
-      const result = (await response.json()) as {
-        paymentStatus?: unknown;
-        error?: unknown;
-      };
-
-      if (!response.ok || typeof result.paymentStatus !== "string") {
-        throw new Error(
-          typeof result.error === "string" ? result.error : "Could not check payment status.",
-        );
-      }
-
-      if (result.paymentStatus === "paid") {
-        setCart({});
-        window.location.assign(`/thank-you?order_id=${encodeURIComponent(orderId)}`);
-        return;
-      }
-
-      if (result.paymentStatus === "pending" && attempt < 10) {
-        setPaymentMessage("Payment submitted. Waiting for confirmation...");
-        await new Promise((resolve) => setTimeout(resolve, 2000));
-        return checkPaymentStatus(orderId, attempt + 1);
-      }
-
-      const messages: Record<string, string> = {
-        paid: "Payment received. Your order is confirmed.",
-        pending: "Your payment is still pending. Please check your payment method.",
-        failed: "Payment failed. Please try again.",
-        cancelled: "Payment was cancelled.",
-        expired: "The payment session expired. Please try again.",
-        refunded: "This order has been refunded.",
-        partially_refunded: "This order has been partially refunded.",
-        chargeback: "This payment is under review.",
-        error: "We could not start the payment. Please try again.",
-      };
-      setPaymentMessage(messages[result.paymentStatus] ?? "Payment status updated.");
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.error("Failed to check payment status:", message);
-      setPaymentMessage("We could not verify your payment status. Please contact the store.");
-    }
-  };
-
   const handleCheckout = async () => {
     const trimmedName = customerInfo.name.trim();
     const trimmedPhone = customerInfo.phone.trim();
@@ -336,11 +275,6 @@ export default function OrderPage() {
       return;
     }
 
-    if (!midtransClientKey || !isSnapReady || !window.snap) {
-      setCheckoutMessage("Midtrans checkout is still loading. Please try again in a moment.");
-      return;
-    }
-
     setIsSubmitting(true);
     setCheckoutMessage(null);
 
@@ -349,6 +283,7 @@ export default function OrderPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          paymentMethod: "qris",
           customer: {
             name: trimmedName,
             phone: trimmedPhone,
@@ -363,40 +298,17 @@ export default function OrderPage() {
         }),
       });
       const result = (await response.json()) as {
-        token?: unknown;
         orderId?: unknown;
         error?: unknown;
       };
 
-      if (
-        !response.ok ||
-        typeof result.token !== "string" ||
-        typeof result.orderId !== "string"
-      ) {
+      if (!response.ok || typeof result.orderId !== "string") {
         throw new Error(
           typeof result.error === "string" ? result.error : "Could not start payment.",
         );
       }
 
-      const orderId = result.orderId;
-      window.snap.pay(result.token, {
-        onSuccess: () => {
-          setPaymentMessage("Payment submitted. Verifying your payment...");
-          void checkPaymentStatus(orderId);
-        },
-        onPending: () => {
-          setPaymentMessage("Payment is pending. Checking for confirmation...");
-          void checkPaymentStatus(orderId);
-        },
-        onError: () => {
-          setPaymentMessage("Midtrans could not complete the payment. Please try again.");
-          void checkPaymentStatus(orderId);
-        },
-        onClose: () => {
-          setPaymentMessage("Payment window closed. Your order will remain pending until paid.");
-          void checkPaymentStatus(orderId);
-        },
-      });
+      setQrisOrderId(result.orderId);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown payment error";
       console.error("Failed to start payment:", message);
@@ -406,34 +318,53 @@ export default function OrderPage() {
     }
   };
 
+  const handleProofUpload = async () => {
+    if (!qrisOrderId || !proofFile) {
+      setCheckoutMessage("Choose a payment proof image before submitting.");
+      return;
+    }
+
+    setIsUploadingProof(true);
+    setCheckoutMessage(null);
+    try {
+      const formData = new FormData();
+      formData.set("orderId", qrisOrderId);
+      formData.set("proof", proofFile);
+      const response = await fetch("/api/payments/qris-proof", {
+        method: "POST",
+        body: formData,
+      });
+      const result = (await response.json()) as { submitted?: unknown; error?: unknown };
+      if (!response.ok || result.submitted !== true) {
+        throw new Error(
+          typeof result.error === "string" ? result.error : "Could not submit payment proof.",
+        );
+      }
+
+      setProofSubmitted(true);
+      router.push(`/thank-you?order_id=${encodeURIComponent(qrisOrderId)}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown upload error";
+      console.error("Failed to submit QRIS payment proof:", message);
+      setCheckoutMessage(message);
+    } finally {
+      setIsUploadingProof(false);
+    }
+  };
+
+  const copyPaymentAmount = async () => {
+    try {
+      await navigator.clipboard.writeText(String(Math.round(total)));
+      setPriceCopyMessage("Copied!");
+    } catch (error) {
+      console.error("Failed to copy QRIS payment amount:", error);
+      setPriceCopyMessage("Could not copy");
+    }
+  };
+
   return (
     <main className="min-h-screen bg-[#F3EDE3] px-4 py-8 text-[#35312D] sm:px-6 lg:px-8">
-      {midtransClientKey ? (
-        <Script
-          src={
-            isMidtransProduction
-              ? "https://app.midtrans.com/snap/snap.js"
-              : "https://app.sandbox.midtrans.com/snap/snap.js"
-          }
-          data-client-key={midtransClientKey}
-          strategy="afterInteractive"
-          onReady={() => setIsSnapReady(true)}
-          onError={() => {
-            setIsSnapReady(false);
-            setCheckoutMessage("Could not load Midtrans checkout. Please refresh and try again.");
-          }}
-        />
-      ) : null}
       <div className="mx-auto max-w-6xl">
-        {paymentMessage ? (
-          <div
-            role="status"
-            className="mb-6 rounded-2xl border border-[#D6C4AB] bg-[#F3EDE3] p-4 text-sm font-medium text-[#76533F]"
-          >
-            {paymentMessage}
-          </div>
-        ) : null}
-
         <header className="mb-8 flex items-center justify-between rounded-full border border-[#D6C4AB]/70 bg-[#F3EDE3]/95 px-5 py-3 shadow-sm backdrop-blur-sm">
           <a href="/" className="flex items-center">
             <Image
@@ -650,13 +581,67 @@ export default function OrderPage() {
               </div>
             </div>
 
+            {qrisOrderId ? (
+              <section className="mt-6 rounded-2xl bg-white p-4 text-[#35312D]">
+                <h3 className="text-lg font-bold">Pay with static QRIS</h3>
+                <p className="mt-2 text-sm leading-6 text-slate-600">
+                  Scan this QRIS with your preferred payment app. Enter the exact amount below;
+                  your order is not confirmed until the store verifies your transfer.
+                </p>
+                <div className="mt-3 flex items-center justify-center gap-2">
+                  <p className="text-lg font-bold">{formatRupiah(total)}</p>
+                  <button
+                    type="button"
+                    onClick={() => void copyPaymentAmount()}
+                    className="rounded-full border border-[#D6C4AB] px-3 py-1.5 text-xs font-semibold text-[#76533F] transition hover:bg-[#F3EDE3]"
+                  >
+                    Copy
+                  </button>
+                </div>
+                {priceCopyMessage ? (
+                  <p role="status" className="mt-1 text-center text-xs text-slate-600">
+                    {priceCopyMessage}
+                  </p>
+                ) : null}
+                <Image
+                  src="/qris-static.jpg"
+                  alt="Static QRIS payment code"
+                  width={768}
+                  height={913}
+                  className="mx-auto mt-3 max-h-[360px] w-auto rounded-xl object-contain"
+                />
+                <label className="mt-4 block text-sm font-semibold">
+                  Upload payment proof (JPG, PNG, or WebP; max 5 MB)
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    onChange={(event) => setProofFile(event.target.files?.[0] ?? null)}
+                    disabled={isUploadingProof}
+                    className="mt-2 block w-full text-sm font-normal file:mr-3 file:rounded-full file:border-0 file:bg-[#E7DCCB] file:px-4 file:py-2 file:font-semibold file:text-[#35312D]"
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={handleProofUpload}
+                  disabled={!proofFile || isUploadingProof || proofSubmitted}
+                  className="mt-4 w-full rounded-full bg-[#76533F] px-4 py-3 text-sm font-bold text-white transition hover:bg-[#624432] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isUploadingProof ? "Submitting proof..." : "Submit payment proof"}
+                </button>
+                {proofSubmitted ? (
+                  <p role="status" className="mt-3 text-sm text-emerald-800">
+                    Proof received. Your payment is waiting for manual verification.
+                  </p>
+                ) : null}
+              </section>
+            ) : null}
+
             <button
               type="button"
               onClick={handleCheckout}
               disabled={
                 isSubmitting ||
-                !midtransClientKey ||
-                !isSnapReady ||
+                Boolean(qrisOrderId) ||
                 cartItems.length === 0 ||
                 !customerInfo.name.trim() ||
                 !customerInfo.phone.trim()
@@ -664,12 +649,10 @@ export default function OrderPage() {
               className="mt-6 w-full rounded-full bg-[#D6C4AB] px-4 py-3 text-sm font-bold text-[#35312D] transition hover:bg-[#E7D8C3] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isSubmitting
-                ? "Preparing secure checkout..."
-                : !midtransClientKey
-                  ? "Configure Midtrans to checkout"
-                  : !isSnapReady
-                    ? "Loading secure checkout..."
-                    : "Proceed to checkout"}
+                ? "Preparing your QRIS order..."
+                : qrisOrderId
+                  ? "QRIS order created"
+                  : "Continue with QRIS"}
             </button>
 
             {checkoutMessage ? (

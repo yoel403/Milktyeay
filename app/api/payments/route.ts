@@ -128,10 +128,6 @@ export async function POST(request: Request) {
   const serverKey = process.env.MIDTRANS_SERVER_KEY;
   const isProduction = process.env.NEXT_PUBLIC_MIDTRANS_IS_PRODUCTION === "true";
 
-  if (!serverKey) {
-    return Response.json({ error: "Midtrans is not configured on the server." }, { status: 503 });
-  }
-
   let payload: unknown;
   try {
     payload = await request.json();
@@ -141,6 +137,14 @@ export async function POST(request: Request) {
 
   if (!isRecord(payload)) {
     return Response.json({ error: "Invalid checkout request." }, { status: 400 });
+  }
+
+  const paymentMethod = payload.paymentMethod ?? "midtrans";
+  if (paymentMethod !== "qris" && paymentMethod !== "midtrans") {
+    return Response.json({ error: "Unsupported payment method." }, { status: 400 });
+  }
+  if (paymentMethod === "midtrans" && !serverKey) {
+    return Response.json({ error: "Midtrans is not configured on the server." }, { status: 503 });
   }
 
   const customer = parseCustomer(payload.customer);
@@ -240,6 +244,7 @@ export async function POST(request: Request) {
     total,
     status: "pending",
     payment_status: "pending",
+    payment_method: paymentMethod,
   });
 
   if (orderError) {
@@ -269,6 +274,10 @@ export async function POST(request: Request) {
       console.error("Failed to remove incomplete payment order:", cleanupError.message);
     }
     return Response.json({ error: "Unable to save your order. Please try again." }, { status: 500 });
+  }
+
+  if (paymentMethod === "qris") {
+    return Response.json({ orderId, paymentMethod });
   }
 
   const snapUrl = isProduction

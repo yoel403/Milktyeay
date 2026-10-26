@@ -32,6 +32,8 @@ The homepage review section accepts customer reviews with an anonymous or named 
 
 ## Midtrans payments
 
+Midtrans checkout is currently hidden from the order page while the account is awaiting approval. The existing Snap integration and notification endpoint remain in the project for when it is ready to be enabled again.
+
 1. Copy the Supabase service-role key from **Project Settings → API Keys** and the Midtrans **Server Key** from the dashboard into `.env.local`.
 2. Copy your Midtrans **Client Key** to `NEXT_PUBLIC_MIDTRANS_CLIENT_KEY` and **Server Key** to `MIDTRANS_SERVER_KEY`.
 3. Keep `NEXT_PUBLIC_MIDTRANS_IS_PRODUCTION=false` while testing with sandbox credentials. Set it to `true` only when using live credentials.
@@ -39,6 +41,12 @@ The homepage review section accepts customer reviews with an anonymous or named 
 5. Restart the Next.js server after editing `.env.local`.
 
 The checkout API recalculates prices from active Supabase products on the server, creates a Midtrans Snap transaction, and returns a Snap token. Snap.js uses that token to open the payment popup over the order page. After the server confirms payment via a signature-verified notification, the customer is sent to `/thank-you`, which verifies the order status before showing a successful confirmation. The frontend never receives the Midtrans server key or Supabase service-role key.
+
+## Static QRIS payments
+
+QRIS is currently the checkout option shown to customers. The static QR image is `public/qris-static.jpg`; replace it with the store’s correct QRIS image if it changes. Customers must enter the exact order total in their payment app, then upload a JPG, PNG, or WebP payment proof (up to 5 MB). Proof uploads are stored in the private `qris-payment-proofs` Supabase Storage bucket.
+
+Run the updated `supabase/schema.sql` in the Supabase SQL editor to add the order payment fields and create/configure the private proof bucket. The upload endpoint also requires the server-side `SUPABASE_SERVICE_ROLE_KEY`. QRIS static payments cannot be confirmed by webhook: check the transfer in the payment provider’s dashboard, inspect the uploaded proof in Supabase Storage, then manually update both `orders.payment_status` and `orders.status` to `paid` in Supabase. Until then, the order remains pending. Do not mark an order paid based only on the uploaded image.
 
 ## Running the app
 

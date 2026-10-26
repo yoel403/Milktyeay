@@ -19,7 +19,7 @@ export async function GET(request: Request) {
 
   const { data, error } = await supabase
     .from("orders")
-    .select("payment_status")
+    .select("payment_status, payment_method, qris_proof_path")
     .eq("id", orderId)
     .maybeSingle();
 
@@ -31,5 +31,9 @@ export async function GET(request: Request) {
     return Response.json({ error: "Order not found." }, { status: 404 });
   }
 
-  return Response.json({ paymentStatus: data.payment_status });
+  return Response.json({
+    paymentStatus: data.payment_status,
+    paymentMethod: data.payment_method,
+    proofSubmitted: Boolean(data.qris_proof_path),
+  });
 }

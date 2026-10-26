@@ -7,6 +7,7 @@ type ConfirmationState =
   | "checking"
   | "paid"
   | "pending"
+  | "awaiting_review"
   | "failed"
   | "cancelled"
   | "expired"
@@ -18,8 +19,8 @@ const confirmationCopy: Record<
 > = {
   checking: {
     title: "Confirming your payment",
-    description: "Please wait while we verify your payment with Midtrans.",
-    icon: "…",
+    description: "Please wait while we check your payment status.",
+    icon: "😊",
   },
   paid: {
     title: "Thank you for your order!",
@@ -28,9 +29,14 @@ const confirmationCopy: Record<
   },
   pending: {
     title: "Payment is still pending",
+    description: "We haven’t received final confirmation yet. Please check again later.",
+    icon: "😊",
+  },
+  awaiting_review: {
+    title: "Payment proof received",
     description:
-      "We haven’t received final confirmation yet. Your order will be confirmed once Midtrans notifies us.",
-    icon: "…",
+      "Your QRIS payment proof is waiting for manual verification. We’ll confirm your order after checking the transfer.",
+    icon: "😊",
   },
   failed: {
     title: "Payment wasn’t completed",
@@ -87,6 +93,8 @@ export default function ThankYouPage() {
         );
         const result = (await response.json()) as {
           paymentStatus?: unknown;
+          paymentMethod?: unknown;
+          proofSubmitted?: unknown;
           error?: unknown;
         };
 
@@ -97,6 +105,15 @@ export default function ThankYouPage() {
         }
 
         if (!isMounted) return;
+
+        if (
+          result.paymentStatus === "pending" &&
+          result.paymentMethod === "qris" &&
+          result.proofSubmitted === true
+        ) {
+          setState("awaiting_review");
+          return;
+        }
 
         if (result.paymentStatus === "pending" && attempt < 10) {
           retryTimer = setTimeout(() => void verifyPayment(attempt + 1), 2000);
@@ -169,10 +186,10 @@ export default function ThankYouPage() {
 
         <div className="mt-8">
           <Link
-            href="/order"
+            href="/"
             className="inline-flex rounded-full bg-[#76533F] px-6 py-3 text-sm font-bold text-white hover:bg-[#624432]"
           >
-            {isPaid ? "Back to menu" : "Return to menu"}
+            {isPaid ? "Back to homepage" : "Return to homepage"}
           </Link>
         </div>
       </section>

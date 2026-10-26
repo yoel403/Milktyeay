@@ -31,7 +31,9 @@ create table if not exists public.orders (
   payment_status text not null default 'pending',
   midtrans_order_id text,
   midtrans_transaction_id text,
-  payment_type text
+  payment_type text,
+  payment_method text not null default 'midtrans',
+  qris_proof_path text
 );
 
 alter table public.orders
@@ -44,7 +46,22 @@ alter table public.orders
   add column if not exists payment_status text not null default 'pending',
   add column if not exists midtrans_order_id text,
   add column if not exists midtrans_transaction_id text,
-  add column if not exists payment_type text;
+  add column if not exists payment_type text,
+  add column if not exists payment_method text not null default 'midtrans',
+  add column if not exists qris_proof_path text;
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'qris-payment-proofs',
+  'qris-payment-proofs',
+  false,
+  5242880,
+  array['image/jpeg', 'image/png', 'image/webp']
+)
+on conflict (id) do update
+set public = excluded.public,
+    file_size_limit = excluded.file_size_limit,
+    allowed_mime_types = excluded.allowed_mime_types;
 
 create unique index if not exists orders_midtrans_order_id_key
   on public.orders (midtrans_order_id)
