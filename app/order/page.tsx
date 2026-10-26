@@ -381,7 +381,7 @@ export default function OrderPage() {
             href="/"
             className="rounded-full border border-[#D6C4AB] bg-[#F3EDE3] px-4 py-2 text-sm font-semibold text-[#35312D] transition hover:border-[#76533F] hover:bg-[#FBF9F5]"
           >
-            landing page
+            Home
           </a>
         </header>
 
@@ -410,21 +410,21 @@ export default function OrderPage() {
                 There are no drinks available right now.
               </p>
             ) : (
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid grid-cols-2 gap-3 sm:gap-4">
                 {products.map((product) => (
                   <button
                     key={product.id}
                     type="button"
                     onClick={() => openProductOptions(product)}
-                    className="group flex w-full flex-col rounded-[1.5rem] border border-slate-200 bg-[#faf7f2] p-4 text-left hover:border-[#bca17f] hover:bg-[#f4ede2]"
+                    className="group flex w-full flex-col items-stretch gap-1 rounded-2xl border border-slate-200 bg-[#faf7f2] p-2 text-left hover:border-[#bca17f] hover:bg-[#f4ede2] sm:justify-start sm:gap-0 sm:rounded-[1.5rem] sm:p-4"
                   >
-                    <div className={`relative flex aspect-square w-full items-center justify-center overflow-hidden rounded-[1.25rem] bg-gradient-to-br ${product.accent} text-6xl`}>
+                    <div className={`relative mx-auto flex aspect-square w-full shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br ${product.accent} text-3xl sm:mx-0 sm:rounded-[1.25rem] sm:text-6xl`}>
                       {product.imageUrl ? (
                         <Image
                           src={product.imageUrl}
                           alt={product.name}
                           fill
-                          sizes="(max-width: 640px) 100vw, 50vw"
+                          sizes="(max-width: 639px) 50vw, 50vw"
                           className="object-cover"
                         />
                       ) : (
@@ -432,17 +432,17 @@ export default function OrderPage() {
                       )}
                     </div>
 
-                    <div className="mt-4 w-full">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">{product.category}</p>
-                          <h2 className="mt-1 text-lg font-black text-slate-900">{product.name}</h2>
+                    <div className="min-w-0 sm:mt-4 sm:w-full">
+                      <div className="flex flex-col items-center gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
+                        <div className="min-w-0 w-full">
+                          <p className="hidden text-xs uppercase tracking-[0.18em] text-slate-500 sm:block">{product.category}</p>
+                          <h2 className="line-clamp-2 break-words text-center text-sm font-black leading-tight text-slate-900 sm:mt-1 sm:text-left sm:text-lg">{product.name}</h2>
                         </div>
-                        <div className="shrink-0 text-base font-black text-slate-900">{formatRupiah(product.price)}</div>
+                        <div className="shrink-0 whitespace-nowrap text-sm font-black text-slate-900 sm:text-base">{formatRupiah(product.price)}</div>
                       </div>
 
-                      <p className="mt-2 text-sm leading-6 text-slate-600">{product.description}</p>
-                      <span className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-[#76533F]">
+                      <p className="mt-2 line-clamp-2 text-xs leading-4 text-slate-600 sm:text-sm sm:leading-6">{product.description}</p>
+                      <span className="mt-4 hidden items-center gap-2 text-sm font-semibold text-[#76533F] sm:inline-flex">
                         Customize drink <span aria-hidden="true">→</span>
                       </span>
                     </div>
@@ -693,7 +693,7 @@ export default function OrderPage() {
               type="button"
               onClick={() => setActiveProduct(null)}
               aria-label="Close"
-              className="absolute right-5 top-5 flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-xl text-slate-600 hover:bg-slate-200"
+              className="absolute right-7 top-7 z-20 flex h-11 w-11 items-center justify-center rounded-full border-2 border-white bg-[#35312D] text-2xl font-black leading-none text-white shadow-lg transition hover:bg-[#76533F] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#76533F]"
             >
               ×
             </button>
