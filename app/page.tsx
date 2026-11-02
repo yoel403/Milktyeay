@@ -195,6 +195,7 @@ export default function Home() {
 
             <nav className="hidden items-center gap-7 text-sm font-medium text-slate-600 md:flex">
               <a href="#shop">Shop</a>
+              <a href="#news">What&apos;s new?</a>
               <a href="#reviews">Reviews</a>
             </nav>
 
@@ -317,6 +318,38 @@ export default function Home() {
                 </article>
               ))
             )}
+          </div>
+        </section>
+
+        <section id="news" className="mt-16 grid items-center gap-10 bg-[#35312D] px-5 py-12 text-[#F3EDE3] sm:px-8 sm:py-16 lg:grid-cols-[1fr_0.85fr] lg:gap-16 lg:px-[8vw] lg:py-20">
+          <div className="max-w-xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#D6C4AB]">News &amp; updates</p>
+            <h2 className="mt-4 text-4xl font-black tracking-tight sm:text-5xl">What&apos;s new?</h2>
+            <div className="mt-8 border-t border-[#D6C4AB]/35 pt-6">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#D6C4AB]/80">A little tea break inspiration</p>
+              <h3 className="mt-3 text-2xl font-bold leading-tight sm:text-3xl">
+                Your next favorite sip is waiting.
+              </h3>
+              <p className="mt-4 max-w-lg text-sm leading-7 text-[#F3EDE3]/75 sm:text-base">
+                Explore our roasted jasmine and oolong milk teas, made for a sweet escape whenever you need one.
+              </p>
+              <a
+                href="#shop"
+                className="mt-7 inline-flex items-center gap-3 text-sm font-semibold text-[#D6C4AB] transition hover:text-white"
+              >
+                Explore favorites <span aria-hidden="true">→</span>
+              </a>
+            </div>
+          </div>
+
+          <div className="relative aspect-[4/3] overflow-hidden">
+            <Image
+              src="/Milktyeay-on-book.jpeg"
+              alt="Milktyeay drink beside an open book"
+              fill
+              sizes="(max-width: 1024px) 100vw, 45vw"
+              className="object-cover"
+            />
           </div>
         </section>
 

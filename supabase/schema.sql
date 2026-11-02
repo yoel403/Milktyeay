@@ -85,6 +85,15 @@ create table if not exists public.order_items (
 alter table public.order_items
   add column if not exists size text not null default 'Classic';
 
+create table if not exists public.expenses (
+  id uuid primary key default gen_random_uuid(),
+  item_name text not null check (char_length(btrim(item_name)) between 1 and 120),
+  expense_date date not null,
+  price numeric not null check (price > 0),
+  quantity integer not null check (quantity > 0),
+  created_at timestamptz not null default now()
+);
+
 create table if not exists public.reviews (
   id uuid primary key default gen_random_uuid(),
   created_at timestamptz not null default now(),
@@ -101,6 +110,7 @@ create table if not exists public.reviews (
 alter table public.products enable row level security;
 alter table public.orders enable row level security;
 alter table public.order_items enable row level security;
+alter table public.expenses enable row level security;
 alter table public.reviews enable row level security;
 
 drop policy if exists "Allow public read products" on public.products;
@@ -116,6 +126,7 @@ drop policy if exists "Allow public select orders" on public.orders;
 drop policy if exists "Allow public select order items" on public.order_items;
 
 revoke all on public.orders, public.order_items from anon, authenticated;
+revoke all on public.expenses from anon, authenticated;
 
 grant select on public.reviews to anon, authenticated;
 

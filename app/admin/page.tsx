@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabaseAuth } from "@/lib/supabase-auth";
 
@@ -19,6 +20,15 @@ const orderStatuses = ["pending", "progressing", "done"] as const;
 
 type PaymentStatus = (typeof paymentStatuses)[number];
 type OrderStatus = (typeof orderStatuses)[number];
+type DashboardStatus = "all" | "success" | "cancel" | "pending" | "process";
+
+const dashboardStatuses: { value: DashboardStatus; label: string }[] = [
+  { value: "all", label: "Semua" },
+  { value: "success", label: "Success" },
+  { value: "cancel", label: "Cancel" },
+  { value: "pending", label: "Pending" },
+  { value: "process", label: "Proses" },
+];
 
 type OrderItem = {
   id: string;
@@ -52,12 +62,20 @@ type OrdersResponse = {
     totalOrders: number;
     paidRevenue: number;
     pendingOrders: number;
-    menuSales: {
-      productName: string;
-      size: string;
-      quantity: number;
-      revenue: number;
-    }[];
+    statusBreakdown: Record<
+      DashboardStatus,
+      {
+        orderCount: number;
+        totalQuantity: number;
+        totalAmount: number;
+        menuSales: {
+          productName: string;
+          size: string;
+          quantity: number;
+          revenue: number;
+        }[];
+      }
+    >;
     toppingSales: {
       name: string;
       quantity: number;
@@ -82,16 +100,18 @@ export default function AdminDashboardPage() {
   const [summary, setSummary] = useState<OrdersResponse["summary"]>();
   const [pageSize, setPageSize] = useState(50);
   const [offset, setOffset] = useState(0);
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState<DashboardStatus>("all");
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [statusEdits, setStatusEdits] = useState<Record<string, PaymentStatus>>({});
   const [orderStatusEdits, setOrderStatusEdits] = useState<Record<string, OrderStatus>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [isSigningOut, setIsSigningOut] = useState(false);
+  const [deletingOrderId, setDeletingOrderId] = useState<string | null>(null);
   const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null);
   const [updatingStatusType, setUpdatingStatusType] = useState<"payment" | "order" | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const loadOrders = useCallback(async () => {
     if (!supabaseAuth) {
@@ -243,6 +263,71 @@ export default function AdminDashboardPage() {
     }
   };
 
+  const deleteOrder = async (order: Order) => {
+    if (
+      !window.confirm(
+        `Delete order ${order.id} for ${order.customer_name || "this customer"}? This will permanently delete the order and its items.`,
+      )
+    ) {
+      return;
+    }
+
+    if (!supabaseAuth) {
+      setErrorMessage("Supabase authentication is not configured.");
+      return;
+    }
+
+    const {
+      data: { session },
+      error: sessionError,
+    } = await supabaseAuth.auth.getSession();
+    if (sessionError || !session) {
+      setErrorMessage("Your login session expired. Please sign in again.");
+      router.replace("/admin/login");
+      return;
+    }
+
+    setDeletingOrderId(order.id);
+    setErrorMessage(null);
+    setSuccessMessage(null);
+    try {
+      const response = await fetch(
+        `/api/admin/orders?orderId=${encodeURIComponent(order.id)}`,
+        {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        },
+      );
+      const result = (await response.json()) as { error?: string; warning?: string };
+
+      if (response.status === 401) {
+        await supabaseAuth.auth.signOut();
+        router.replace("/admin/login");
+        return;
+      }
+      if (!response.ok) {
+        throw new Error(result.error ?? "Unable to delete order.");
+      }
+
+      if (orders.length === 1 && offset > 0) {
+        setOffset((current) => Math.max(0, current - pageSize));
+      } else {
+        await loadOrders();
+      }
+      setSuccessMessage(
+        result.warning
+          ? `${result.warning} Order ID: ${order.id}`
+          : `Order ${order.id} and its items were deleted.`,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error("Failed to delete admin order:", message);
+      setErrorMessage(message);
+    } finally {
+      setDeletingOrderId(null);
+    }
+  };
+
   const handleSignOut = async () => {
     if (!supabaseAuth) return;
     setIsSigningOut(true);
@@ -256,6 +341,8 @@ export default function AdminDashboardPage() {
     router.replace("/admin/login");
   };
 
+  const selectedStatusSummary = summary?.statusBreakdown[statusFilter];
+
   return (
     <main className="min-h-screen bg-[#F3EDE3] px-4 py-8 text-[#35312D] sm:px-6 lg:px-8">
       <div className="mx-auto max-w-6xl">
@@ -267,18 +354,32 @@ export default function AdminDashboardPage() {
             <h1 className="mt-2 text-3xl font-black tracking-tight">Order dashboard</h1>
             <p className="mt-1 text-sm text-slate-600">Track order progress and payment status.</p>
           </div>
-          <button
-            type="button"
-            onClick={() => void handleSignOut()}
-            disabled={isSigningOut}
-            className="rounded-full border border-[#D6C4AB] bg-[#FBF9F5] px-5 py-2.5 text-sm font-semibold hover:bg-white disabled:opacity-60"
-          >
-            {isSigningOut ? "Signing out..." : "Sign out"}
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              href="/admin/dashboard"
+              className="rounded-full border border-[#D6C4AB] bg-[#FBF9F5] px-5 py-2.5 text-sm font-semibold hover:bg-white"
+            >
+              Business dashboard
+            </Link>
+            <Link
+              href="/admin/expenses"
+              className="rounded-full border border-[#D6C4AB] bg-[#FBF9F5] px-5 py-2.5 text-sm font-semibold hover:bg-white"
+            >
+              Pencatatan pengeluaran
+            </Link>
+            <button
+              type="button"
+              onClick={() => void handleSignOut()}
+              disabled={isSigningOut}
+              className="rounded-full border border-[#D6C4AB] bg-[#FBF9F5] px-5 py-2.5 text-sm font-semibold hover:bg-white disabled:opacity-60"
+            >
+              {isSigningOut ? "Signing out..." : "Sign out"}
+            </button>
+          </div>
         </header>
 
         <section className="mt-7 rounded-2xl border border-[#D6C4AB] bg-[#FBF9F5] p-4 sm:p-5">
-          <form onSubmit={handleSearch} className="grid gap-3 sm:grid-cols-[1fr_auto_auto]">
+          <form onSubmit={handleSearch} className="grid gap-3 sm:grid-cols-[1fr_auto]">
             <label className="sr-only" htmlFor="order-search">Search orders</label>
             <input
               id="order-search"
@@ -288,22 +389,6 @@ export default function AdminDashboardPage() {
               placeholder="Search name, phone, email, or order ID"
               className="min-w-0 rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm outline-none focus:border-[#76533F]"
             />
-            <select
-              aria-label="Filter by payment status"
-              value={statusFilter}
-              onChange={(event) => {
-                setOffset(0);
-                setStatusFilter(event.target.value);
-              }}
-              className="rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm capitalize outline-none focus:border-[#76533F]"
-            >
-              <option value="all">All payment statuses</option>
-              {paymentStatuses.map((status) => (
-                <option key={status} value={status} className="capitalize">
-                  {formatStatus(status)}
-                </option>
-              ))}
-            </select>
             <button
               type="submit"
               className="rounded-xl bg-[#76533F] px-5 py-2.5 text-sm font-bold text-white hover:bg-[#624432]"
@@ -311,11 +396,41 @@ export default function AdminDashboardPage() {
               Search
             </button>
           </form>
+          <nav aria-label="Filter orders by status" className="mt-4 flex gap-2 overflow-x-auto pb-1">
+            {dashboardStatuses.map((status) => (
+              <button
+                key={status.value}
+                type="button"
+                aria-pressed={statusFilter === status.value}
+                onClick={() => {
+                  setOffset(0);
+                  setStatusFilter(status.value);
+                }}
+                className={`shrink-0 rounded-full px-4 py-2 text-sm font-semibold transition ${
+                  statusFilter === status.value
+                    ? "bg-[#76533F] text-white"
+                    : "border border-[#D6C4AB] bg-white text-[#624432] hover:bg-[#F3EDE3]"
+                }`}
+              >
+                {status.label}
+                {summary ? (
+                  <span className="ml-2 text-xs opacity-75">
+                    {summary.statusBreakdown[status.value].orderCount}
+                  </span>
+                ) : null}
+              </button>
+            ))}
+          </nav>
         </section>
 
         {errorMessage ? (
           <p role="alert" className="mt-5 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
             {errorMessage}
+          </p>
+        ) : null}
+        {successMessage ? (
+          <p role="status" className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+            {successMessage}
           </p>
         ) : null}
 
@@ -345,34 +460,51 @@ export default function AdminDashboardPage() {
               <p className="mt-1 text-xs text-slate-500">Paid orders only</p>
             </article>
             <article className="rounded-2xl border border-[#D6C4AB] bg-[#FBF9F5] p-5">
-              <p className="text-sm font-medium text-slate-600">Pending orders</p>
+              <p className="text-sm font-medium text-slate-600">Pending payments</p>
               <p className="mt-2 text-2xl font-black">{summary.pendingOrders}</p>
             </article>
           </section>
         ) : null}
 
-        {summary ? (
+        {selectedStatusSummary ? (
+          <section aria-label="Selected status totals" className="mt-4 grid gap-4 sm:grid-cols-3">
+            <article className="rounded-2xl border border-[#D6C4AB] bg-[#FBF9F5] p-5">
+              <p className="text-sm font-medium text-slate-600">Orders in this status</p>
+              <p className="mt-2 text-2xl font-black">{selectedStatusSummary.orderCount}</p>
+            </article>
+            <article className="rounded-2xl border border-[#D6C4AB] bg-[#FBF9F5] p-5">
+              <p className="text-sm font-medium text-slate-600">Menu quantity</p>
+              <p className="mt-2 text-2xl font-black">{selectedStatusSummary.totalQuantity}</p>
+            </article>
+            <article className="rounded-2xl border border-[#D6C4AB] bg-[#FBF9F5] p-5">
+              <p className="text-sm font-medium text-slate-600">Order total</p>
+              <p className="mt-2 text-2xl font-black">{formatRupiah(selectedStatusSummary.totalAmount)}</p>
+            </article>
+          </section>
+        ) : null}
+
+        {selectedStatusSummary ? (
           <section className="mt-6 rounded-2xl border border-[#D6C4AB] bg-[#FBF9F5] p-5 sm:p-6">
             <div className="flex flex-wrap items-end justify-between gap-2">
               <div>
-                <h2 className="text-xl font-black">Menu order totals</h2>
+                <h2 className="text-xl font-black">Menu totals · {dashboardStatuses.find((status) => status.value === statusFilter)?.label}</h2>
                 <p className="mt-1 text-sm text-slate-600">
-                  Quantities and sales include paid orders only.
+                  Menu quantities and sales for the selected order status.
                 </p>
               </div>
             </div>
-            {summary.menuSales.length ? (
+            {selectedStatusSummary.menuSales.length ? (
               <div className="mt-4 overflow-x-auto">
                 <table className="w-full min-w-[480px] text-left text-sm">
                   <thead className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
                     <tr>
                       <th scope="col" className="pb-3 pr-4 font-semibold">Menu item</th>
-                      <th scope="col" className="pb-3 pr-4 text-right font-semibold">Paid units</th>
-                      <th scope="col" className="pb-3 text-right font-semibold">Paid sales</th>
+                      <th scope="col" className="pb-3 pr-4 text-right font-semibold">Quantity</th>
+                      <th scope="col" className="pb-3 text-right font-semibold">Menu total</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {summary.menuSales.map((item) => (
+                    {selectedStatusSummary.menuSales.map((item) => (
                       <tr key={`${item.productName}-${item.size}`}>
                         <th scope="row" className="py-3 pr-4 font-semibold">
                           {item.productName} <span className="font-normal text-slate-500">({item.size})</span>
@@ -385,7 +517,7 @@ export default function AdminDashboardPage() {
                 </table>
               </div>
             ) : (
-              <p className="mt-4 text-sm text-slate-600">No menu items have been ordered yet.</p>
+              <p className="mt-4 text-sm text-slate-600">No menu items in this status.</p>
             )}
           </section>
         ) : null}
@@ -499,6 +631,7 @@ export default function AdminDashboardPage() {
                     onClick={() => void updateOrderStatus(order, "payment")}
                     disabled={
                       updatingOrderId === order.id ||
+                      deletingOrderId === order.id ||
                       statusEdits[order.id] === order.payment_status
                     }
                     className="rounded-lg border border-[#D6C4AB] px-3 py-2 text-sm font-semibold text-[#76533F] hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
@@ -531,6 +664,7 @@ export default function AdminDashboardPage() {
                     onClick={() => void updateOrderStatus(order, "order")}
                     disabled={
                       updatingOrderId === order.id ||
+                      deletingOrderId === order.id ||
                       orderStatusEdits[order.id] === order.status
                     }
                     className="rounded-lg bg-[#76533F] px-4 py-2 text-sm font-bold text-white hover:bg-[#624432] disabled:cursor-not-allowed disabled:opacity-50"
@@ -538,6 +672,14 @@ export default function AdminDashboardPage() {
                     {updatingOrderId === order.id && updatingStatusType === "order"
                       ? "Saving..."
                       : "Save order"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void deleteOrder(order)}
+                    disabled={deletingOrderId === order.id || updatingOrderId === order.id}
+                    className="rounded-lg border border-red-300 px-4 py-2 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {deletingOrderId === order.id ? "Deleting..." : "Delete order"}
                   </button>
                 </div>
 
