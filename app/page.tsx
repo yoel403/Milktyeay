@@ -278,7 +278,7 @@ export default function Home() {
               products.map((product) => (
                 <article
                   key={product.id}
-                  className="w-[72%] max-w-[280px] shrink-0 snap-center overflow-hidden rounded-[1.75rem] border border-slate-200 bg-[#fafaf9] p-3 shadow-sm sm:w-[calc(50%_-_0.5rem)] sm:max-w-none sm:shrink sm:snap-none sm:p-4 lg:w-[calc(33.333%_-_0.75rem)]"
+                  className="flex w-[72%] max-w-[280px] shrink-0 snap-center flex-col overflow-hidden rounded-[1.75rem] border border-slate-200 bg-[#fafaf9] p-3 shadow-sm sm:w-[calc(50%_-_0.5rem)] sm:max-w-none sm:shrink sm:snap-none sm:p-4 lg:w-[calc(33.333%_-_0.75rem)]"
                 >
                   <div className={`relative flex aspect-video items-center justify-center overflow-hidden rounded-[1.5rem] bg-gradient-to-br ${product.accent} sm:aspect-[4/3]`}>
                     {product.imageUrl ? (
@@ -297,7 +297,7 @@ export default function Home() {
                     </span>
                   </div>
 
-                  <div className="mt-4">
+                  <div className="mt-4 flex-1">
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <p className="text-xs uppercase tracking-[0.18em] text-slate-500">{product.category}</p>
@@ -311,7 +311,7 @@ export default function Home() {
 
                   <a
                     href="/order"
-                    className="mt-4 inline-flex w-full items-center justify-center rounded-full bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
+                    className="mt-6 inline-flex w-full items-center justify-center rounded-full bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
                   >
                     Explore product
                   </a>

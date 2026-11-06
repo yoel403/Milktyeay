@@ -13,9 +13,12 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Milktyeay | D2C Online Ordering",
+  title: "Milktyeay",
   description:
     "Premium direct-to-consumer wellness essentials for focus, recovery, and daily energy.",
+  icons: {
+    icon: "/milktyeay-icon.png",
+  },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

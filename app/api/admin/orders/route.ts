@@ -30,6 +30,30 @@ type SummaryOrder = {
   }[];
 };
 
+type ProductSize = {
+  label: string;
+  volume: string;
+};
+
+type ActiveProduct = {
+  id: number;
+  name: string;
+  sizes: ProductSize[];
+};
+
+function parseProductSizes(value: unknown): ProductSize[] {
+  if (!Array.isArray(value)) return [];
+
+  return value.flatMap((size): ProductSize[] => {
+    if (typeof size !== "object" || size === null || Array.isArray(size)) return [];
+    const option = size as Record<string, unknown>;
+    const label = typeof option.label === "string" ? option.label.trim() : "";
+    const volume = typeof option.volume === "string" ? option.volume.trim() : "";
+    if (!label) return [];
+    return [{ label, volume }];
+  });
+}
+
 type OrderFilter = "success" | "cancel" | "pending" | "process";
 
 function getOrderFilter(order: Pick<SummaryOrder, "status" | "payment_status">): OrderFilter | null {
@@ -177,6 +201,10 @@ export async function GET(request: Request) {
     .replace(/[^\p{L}\p{N}@.+ -]/gu, "")
     .trim()
     .slice(0, 80);
+  const dateSortDirection = url.searchParams.get("dateSortDirection") ?? "desc";
+  if (dateSortDirection !== "asc" && dateSortDirection !== "desc") {
+    return Response.json({ error: "Invalid order date sort direction." }, { status: 400 });
+  }
 
   let supabase;
   try {
@@ -189,44 +217,103 @@ export async function GET(request: Request) {
     );
   }
 
-  let query = supabase
-    .from("orders")
-    .select(
-      "id, created_at, customer_name, customer_phone, customer_email, total, status, payment_status, payment_method, payment_type, qris_proof_path, order_items (id, product_name, size, quantity, toppings, unit_price)",
-      { count: "exact" },
-    )
-    .order("created_at", { ascending: false })
-    .range(requestedOffset, requestedOffset + pageSize - 1);
+  const loadOrders = (includeDeliveryFields: boolean) => {
+    let query = supabase
+      .from("orders")
+      .select(
+        includeDeliveryFields
+          ? "id, created_at, customer_name, customer_phone, customer_email, delivery_method, delivery_address, order_date, total, status, payment_status, payment_method, payment_type, qris_proof_path, order_items (id, product_name, size, quantity, toppings, unit_price)"
+          : "id, created_at, customer_name, customer_phone, customer_email, total, status, payment_status, payment_method, payment_type, qris_proof_path, order_items (id, product_name, size, quantity, toppings, unit_price)",
+        { count: "exact" },
+      )
+      .order("created_at", { ascending: dateSortDirection === "asc" })
+      .order("id", { ascending: dateSortDirection === "asc" })
+      .range(requestedOffset, requestedOffset + pageSize - 1);
 
-  if (status === "success") {
-    query = query
-      .eq("status", "done")
-      .neq("payment_status", "cancelled")
-      .neq("payment_status", "failed")
-      .neq("payment_status", "expired");
-  } else if (status === "cancel") {
-    query = query.in("payment_status", ["cancelled", "failed", "expired"]);
-  } else if (status === "pending") {
-    query = query.eq("payment_status", "pending").neq("status", "done");
-  } else if (status === "process") {
-    query = query.eq("payment_status", "paid").neq("status", "done");
-  }
-  if (search) {
-    const searchPattern = `*${search}*`;
-    const conditions = [
-      `customer_name.ilike.${searchPattern}`,
-      `customer_phone.ilike.${searchPattern}`,
-      `customer_email.ilike.${searchPattern}`,
-    ];
-    if (orderIdPattern.test(search)) conditions.push(`id.eq.${search}`);
-    query = query.or(conditions.join(","));
+    if (status === "success") {
+      query = query
+        .eq("status", "done")
+        .neq("payment_status", "cancelled")
+        .neq("payment_status", "failed")
+        .neq("payment_status", "expired");
+    } else if (status === "cancel") {
+      query = query.in("payment_status", ["cancelled", "failed", "expired"]);
+    } else if (status === "pending") {
+      query = query.eq("payment_status", "pending").neq("status", "done");
+    } else if (status === "process") {
+      query = query.eq("payment_status", "paid").neq("status", "done");
+    }
+    if (search) {
+      const searchPattern = `*${search}*`;
+      const conditions = [
+        `customer_name.ilike.${searchPattern}`,
+        `customer_phone.ilike.${searchPattern}`,
+        `customer_email.ilike.${searchPattern}`,
+      ];
+      if (orderIdPattern.test(search)) conditions.push(`id.eq.${search}`);
+      query = query.or(conditions.join(","));
+    }
+
+    return query;
+  };
+
+  let { data, error, count } = await loadOrders(true);
+  const hasMissingDeliveryColumns =
+    error &&
+    (error.code === "42703" ||
+      error.code === "PGRST204" ||
+      error.code === "PGRST200") &&
+    /(delivery_(method|address)|order_date)/i.test(error.message);
+
+  if (hasMissingDeliveryColumns) {
+    console.warn(
+      "Admin order delivery columns are missing; loading legacy orders without delivery details. Apply the latest supabase/schema.sql to enable delivery fields.",
+    );
+    ({ data, error, count } = await loadOrders(false));
   }
 
-  const { data, error, count } = await query;
   if (error) {
     console.error("Failed to load admin orders:", error.message);
     return Response.json({ error: "Unable to load orders." }, { status: 500 });
   }
+
+  const legacyOrders = (data ?? []) as unknown as Array<Record<string, unknown> & {
+    qris_proof_path: string | null;
+  }>;
+  const orders = legacyOrders.map((order) => ({
+    ...order,
+    delivery_method: "delivery_method" in order ? order.delivery_method : "pickup",
+    delivery_address: "delivery_address" in order ? order.delivery_address : null,
+    order_date: "order_date" in order ? order.order_date : null,
+  }));
+
+  const { data: productRows, error: productsError } = await supabase
+    .from("products")
+    .select("id, name, sizes")
+    .eq("is_active", true)
+    .order("name", { ascending: true });
+
+  if (productsError) {
+    console.error("Failed to load active products for admin orders:", productsError.message);
+    return Response.json({ error: "Unable to load products for custom orders." }, { status: 500 });
+  }
+
+  const products: ActiveProduct[] = ((productRows ?? []) as unknown as {
+    id: number | string;
+    name: string;
+    sizes: unknown;
+  }[]).flatMap((product) => {
+    const id = Number(product.id);
+    if (!Number.isSafeInteger(id) || id <= 0) return [];
+
+    const sizes = parseProductSizes(product.sizes);
+
+    return [{
+      id,
+      name: product.name,
+      sizes: sizes.length ? sizes : [{ label: "Classic", volume: "" }],
+    }];
+  });
 
   let summary;
   try {
@@ -236,7 +323,7 @@ export async function GET(request: Request) {
   }
 
   const ordersWithProofs = [];
-  for (const order of data ?? []) {
+  for (const order of orders) {
     if (!order.qris_proof_path) {
       ordersWithProofs.push({ ...order, proofUrl: null });
       continue;
@@ -254,10 +341,223 @@ export async function GET(request: Request) {
 
   return Response.json({
     orders: ordersWithProofs,
+    products,
     total: count ?? 0,
     pageSize,
     summary,
   });
+}
+
+export async function POST(request: Request) {
+  const authorization = await authorizeAdmin(request);
+  if (!authorization.authorized) return authorization.response;
+
+  let payload: unknown;
+  try {
+    payload = await request.json();
+  } catch {
+    return Response.json({ error: "Request body must be valid JSON." }, { status: 400 });
+  }
+
+  if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
+    return Response.json({ error: "Custom order details are required." }, { status: 400 });
+  }
+
+  const input = payload as Record<string, unknown>;
+  if (input.customerName !== undefined && typeof input.customerName !== "string") {
+    return Response.json({ error: "Customer name must be text." }, { status: 400 });
+  }
+  const customerName =
+    typeof input.customerName === "string" ? input.customerName.trim() : "";
+  const paymentStatus = input.paymentStatus;
+  const deliveryMethod = input.deliveryMethod ?? "pickup";
+  const deliveryAddress =
+    typeof input.deliveryAddress === "string" ? input.deliveryAddress.trim() : "";
+  const rawItems = input.items;
+
+  if (customerName.length > 100) {
+    return Response.json({ error: "Customer name must be 100 characters or fewer." }, { status: 400 });
+  }
+  if (
+    (deliveryMethod !== "pickup" && deliveryMethod !== "delivery") ||
+    (deliveryMethod === "delivery" && (!deliveryAddress || deliveryAddress.length > 500))
+  ) {
+    return Response.json({ error: "A valid delivery method and delivery address are required." }, { status: 400 });
+  }
+  if (paymentStatus !== "paid" && paymentStatus !== "pending") {
+    return Response.json({ error: "Payment status must be paid or pending." }, { status: 400 });
+  }
+  if (!Array.isArray(rawItems) || rawItems.length < 1 || rawItems.length > 30) {
+    return Response.json({ error: "Add between 1 and 30 menu items to the custom order." }, { status: 400 });
+  }
+
+  const inputItems: { productId: number; size: string; quantity: number; unitPrice: number }[] = [];
+  for (const rawItem of rawItems) {
+    if (typeof rawItem !== "object" || rawItem === null || Array.isArray(rawItem)) {
+      return Response.json({ error: "Each custom order item must be valid." }, { status: 400 });
+    }
+    const item = rawItem as Record<string, unknown>;
+    const productId = Number(item.productId);
+    const size = typeof item.size === "string" ? item.size.trim() : "";
+    const quantity = item.quantity;
+    const unitPrice = item.unitPrice;
+    if (
+      !Number.isSafeInteger(productId) ||
+      productId <= 0 ||
+      !size ||
+      size.length > 40 ||
+      typeof quantity !== "number" ||
+      !Number.isSafeInteger(quantity) ||
+      quantity < 1 ||
+      quantity > 50 ||
+      typeof unitPrice !== "number" ||
+      !Number.isSafeInteger(unitPrice) ||
+      unitPrice < 0 ||
+      unitPrice > 2_000_000_000
+    ) {
+      return Response.json({ error: "Each menu item needs a valid menu, size, quantity, and manual price." }, { status: 400 });
+    }
+    inputItems.push({ productId, size, quantity, unitPrice });
+  }
+
+  let supabase;
+  try {
+    supabase = createSupabaseAdmin();
+  } catch (error) {
+    console.error("Admin custom order configuration error:", error);
+    return Response.json({ error: "Admin order access is not configured." }, { status: 503 });
+  }
+
+  const productIds = [...new Set(inputItems.map((item) => item.productId))];
+  const { data: productRows, error: productsError } = await supabase
+    .from("products")
+    .select("id, name, sizes")
+    .eq("is_active", true)
+    .in("id", productIds);
+
+  if (productsError) {
+    console.error("Failed to verify custom order products:", productsError.message);
+    return Response.json({ error: "Unable to verify selected menu items." }, { status: 500 });
+  }
+
+  const products = new Map(
+    ((productRows ?? []) as unknown as {
+      id: number | string;
+      name: string;
+      sizes: unknown;
+    }[]).map((product) => [Number(product.id), product]),
+  );
+  const pricedItems: {
+    productId: number;
+    productName: string;
+    size: string;
+    quantity: number;
+    unitPrice: number;
+  }[] = [];
+
+  for (const item of inputItems) {
+    const product = products.get(item.productId);
+    if (!product) {
+      return Response.json({ error: "A selected menu item is no longer available." }, { status: 400 });
+    }
+
+    const sizes = parseProductSizes(product.sizes);
+    const sizeOption = sizes.length
+      ? sizes.find((size) => size.label === item.size)
+      : item.size === "Classic"
+        ? { label: "Classic", volume: "" }
+        : undefined;
+    if (!sizeOption) {
+      return Response.json({ error: "A selected menu size is no longer available." }, { status: 400 });
+    }
+
+    pricedItems.push({
+      productId: item.productId,
+      productName: product.name,
+      size: item.size,
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+    });
+  }
+
+  const total = pricedItems.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
+  if (!Number.isSafeInteger(total) || total < 1 || total > 2_000_000_000) {
+    return Response.json({ error: "Custom order total must be between Rp1 and Rp2,000,000,000." }, { status: 400 });
+  }
+
+  const createOrder = (includeDeliveryFields: boolean) => {
+    const orderDetails = {
+      customer_name: customerName || null,
+      customer_phone: null,
+      customer_email: null,
+      total,
+      status: "pending",
+      payment_status: paymentStatus,
+      payment_method: "manual",
+    };
+    const insertPayload = includeDeliveryFields
+      ? {
+          ...orderDetails,
+          delivery_method: deliveryMethod,
+          delivery_address: deliveryMethod === "delivery" ? deliveryAddress : null,
+        }
+      : orderDetails;
+
+    return supabase
+      .from("orders")
+      .insert(insertPayload)
+      .select("id")
+      .single();
+  };
+
+  let { data: order, error: orderError } = await createOrder(true);
+  const missingDeliveryColumns =
+    orderError &&
+    (orderError.code === "42703" || orderError.code === "PGRST204") &&
+    /(delivery_(method|address)|order_date)/i.test(orderError.message);
+
+  if (missingDeliveryColumns && deliveryMethod === "pickup") {
+    console.warn(
+      "Admin custom order delivery columns are missing; creating pickup order without delivery details. Apply the latest supabase/schema.sql to enable delivery fields.",
+    );
+    ({ data: order, error: orderError } = await createOrder(false));
+  } else if (missingDeliveryColumns) {
+    return Response.json(
+      { error: "Apply the latest supabase/schema.sql before creating a custom delivery order." },
+      { status: 503 },
+    );
+  }
+
+  if (orderError || !order) {
+    console.error("Failed to create admin custom order:", orderError?.message ?? "No order was returned.");
+    return Response.json(
+      { error: "Unable to create the custom order. Check that the latest Supabase schema is applied." },
+      { status: 500 },
+    );
+  }
+
+  const { error: itemsError } = await supabase.from("order_items").insert(
+    pricedItems.map((item) => ({
+      order_id: order.id,
+      product_id: item.productId,
+      product_name: item.productName,
+      size: item.size,
+      quantity: item.quantity,
+      toppings: [],
+      unit_price: item.unitPrice,
+    })),
+  );
+
+  if (itemsError) {
+    console.error("Failed to save admin custom order items:", itemsError.message);
+    const { error: cleanupError } = await supabase.from("orders").delete().eq("id", order.id);
+    if (cleanupError) {
+      console.error("Failed to remove incomplete admin custom order:", cleanupError.message);
+    }
+    return Response.json({ error: "Unable to save custom order items." }, { status: 500 });
+  }
+
+  return Response.json({ orderId: order.id }, { status: 201 });
 }
 
 export async function PATCH(request: Request) {

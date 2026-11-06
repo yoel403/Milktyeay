@@ -26,6 +26,9 @@ create table if not exists public.orders (
   customer_name text,
   customer_phone text,
   customer_email text,
+  delivery_method text not null default 'pickup',
+  delivery_address text,
+  order_date date,
   total numeric not null default 0,
   status text not null default 'pending',
   payment_status text not null default 'pending',
@@ -37,7 +40,10 @@ create table if not exists public.orders (
 );
 
 alter table public.orders
-  add column if not exists customer_phone text;
+  add column if not exists customer_phone text,
+  add column if not exists delivery_method text not null default 'pickup',
+  add column if not exists delivery_address text,
+  add column if not exists order_date date;
 
 update public.orders
 set status = 'pending'

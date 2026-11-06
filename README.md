@@ -32,7 +32,7 @@ The homepage review section accepts customer reviews with an anonymous or named 
 
 ## Admin order dashboard
 
-The private order dashboard is available at `/admin`, with its sign-in page at `/admin/login`. It uses Supabase email/password authentication and only allows addresses listed in the server-side `ADMIN_EMAILS` environment variable (comma-separated). Add the authorized admin account under **Supabase → Authentication → Users** and set its email in your deployment environment, for example:
+The private order dashboard is available at `/admin`, with its sign-in page at `/admin/login`. It uses Supabase email/password authentication and only allows addresses listed in the server-side `ADMIN_EMAILS` environment variable (comma-separated). Admins can create manual custom orders by selecting menu items, sizes, quantities, and a custom unit price for each item; the order total is calculated from those prices and quantities. A customer name is optional, and the admin chooses `paid` or `pending`. Orders can also be placed for delivery (with a required address) or pickup; the selected method, delivery address, and scheduled order date appear in the admin order details. Customer checkout requires selecting a weekday at least two days ahead. Run the updated `supabase/schema.sql` to add the delivery and order date fields to an existing database. Add the authorized admin account under **Supabase → Authentication → Users** and set its email in your deployment environment, for example:
 
 ```env
 ADMIN_EMAILS=owner@example.com

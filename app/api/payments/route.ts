@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { createSupabaseAdmin } from "@/lib/supabase-admin";
+import { isAllowedOrderDate } from "@/lib/order-date";
 
 type SizeOption = {
   label: string;
@@ -66,6 +67,20 @@ function parseCustomer(value: unknown) {
   }
 
   return { name, phone, email: email || null };
+}
+
+function parseDelivery(value: unknown) {
+  if (value === undefined) return { method: "pickup" as const, address: null };
+  if (!isRecord(value)) return null;
+
+  const method = value.method ?? "pickup";
+  const address = typeof value.address === "string" ? value.address.trim() : "";
+
+  if (method === "pickup") return { method, address: null };
+  if (method === "delivery" && address.length > 0 && address.length <= 500) {
+    return { method, address };
+  }
+  return null;
 }
 
 function parseItems(value: unknown): CheckoutItemInput[] | null {
@@ -148,10 +163,18 @@ export async function POST(request: Request) {
   }
 
   const customer = parseCustomer(payload.customer);
+  const delivery = parseDelivery(payload.delivery);
+  const orderDate =
+    typeof payload.orderDate === "string" && isAllowedOrderDate(payload.orderDate)
+      ? payload.orderDate
+      : null;
   const inputItems = parseItems(payload.items);
 
-  if (!customer || !inputItems) {
-    return Response.json({ error: "Please provide valid customer and order details." }, { status: 400 });
+  if (!customer || !delivery || !orderDate || !inputItems) {
+    return Response.json(
+      { error: "Please provide valid customer details, a weekday order date at least two days from today, and order items." },
+      { status: 400 },
+    );
   }
 
   let supabase;
@@ -241,6 +264,9 @@ export async function POST(request: Request) {
     customer_name: customer.name,
     customer_phone: customer.phone,
     customer_email: customer.email,
+    delivery_method: delivery.method,
+    delivery_address: delivery.address,
+    order_date: orderDate,
     total,
     status: "pending",
     payment_status: "pending",
@@ -249,6 +275,24 @@ export async function POST(request: Request) {
 
   if (orderError) {
     console.error("Failed to create payment order:", orderError.message);
+    const hasMissingOrderColumns =
+      (orderError.code === "42703" ||
+        orderError.code === "PGRST204" ||
+        orderError.code === "PGRST200") &&
+      /(customer_phone|customer_email|delivery_method|delivery_address|order_date|payment_status|payment_method|midtrans_order_id)/i.test(
+        orderError.message,
+      );
+
+    if (hasMissingOrderColumns) {
+      return Response.json(
+        {
+          error:
+            "Order database setup is outdated. Run the latest supabase/schema.sql in the Supabase SQL Editor, then try again.",
+        },
+        { status: 503 },
+      );
+    }
+
     return Response.json({ error: "Unable to create your order. Please try again." }, { status: 500 });
   }
 

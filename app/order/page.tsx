@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { getMinimumOrderDate, isAllowedOrderDate } from "@/lib/order-date";
 
 type SizeOption = {
   label: string;
@@ -36,6 +37,11 @@ type CartEntry = {
   size: string;
   toppings: string[];
   quantity: number;
+};
+
+type MissingCheckoutField = {
+  label: string;
+  inputId: string;
 };
 
 const formatRupiah = (value: number) =>
@@ -72,9 +78,27 @@ export default function OrderPage() {
     phone: "",
     email: "",
   });
+  const [missingCheckoutFields, setMissingCheckoutFields] = useState<
+    MissingCheckoutField[] | null
+  >(null);
+  const [cartItemToRemove, setCartItemToRemove] = useState<{
+    key: string;
+    productName: string;
+  } | null>(null);
+  const [deliveryMethod, setDeliveryMethod] = useState<"delivery" | "pickup">("pickup");
+  const [deliveryAddress, setDeliveryAddress] = useState("");
+  const [orderDate, setOrderDate] = useState("");
+  const orderDateInputRef = useRef<HTMLInputElement>(null);
+  const [orderDateError, setOrderDateError] = useState<string | null>(null);
   const [activeProduct, setActiveProduct] = useState<Product | null>(null);
   const [selectedSize, setSelectedSize] = useState("");
   const [selectedToppings, setSelectedToppings] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (orderDateInputRef.current) {
+      orderDateInputRef.current.min = getMinimumOrderDate(new Date());
+    }
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -171,6 +195,30 @@ export default function OrderPage() {
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [activeProduct]);
 
+  useEffect(() => {
+    if (!missingCheckoutFields) return;
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMissingCheckoutFields(null);
+      }
+    };
+
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [missingCheckoutFields]);
+
+  useEffect(() => {
+    if (!cartItemToRemove) return;
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setCartItemToRemove(null);
+    };
+
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [cartItemToRemove]);
+
   const [cart, setCart] = useState<Record<string, CartEntry>>({});
 
   const openProductOptions = (product: Product) => {
@@ -265,13 +313,29 @@ export default function OrderPage() {
     const trimmedName = customerInfo.name.trim();
     const trimmedPhone = customerInfo.phone.trim();
     const trimmedEmail = customerInfo.email.trim();
+    const trimmedDeliveryAddress = deliveryAddress.trim();
 
     if (cartItems.length === 0) {
       return;
     }
 
-    if (!trimmedName || !trimmedPhone) {
-      setCheckoutMessage("Please fill in your name and phone number before checkout.");
+    const missingInformation: MissingCheckoutField[] = [
+      !trimmedName ? { label: "Your name", inputId: "customer-name" } : null,
+      !trimmedPhone ? { label: "Phone number", inputId: "customer-phone" } : null,
+      !orderDate ? { label: "Delivery/Pick up Date", inputId: "order-date" } : null,
+      deliveryMethod === "delivery" && !trimmedDeliveryAddress
+        ? { label: "Delivery address", inputId: "delivery-address" }
+        : null,
+    ].filter((field): field is MissingCheckoutField => field !== null);
+
+    if (missingInformation.length > 0) {
+      setCheckoutMessage(null);
+      setMissingCheckoutFields(missingInformation);
+      return;
+    }
+
+    if (!isAllowedOrderDate(orderDate)) {
+      setOrderDateError("Choose a weekday at least two days from today.");
       return;
     }
 
@@ -289,6 +353,11 @@ export default function OrderPage() {
             phone: trimmedPhone,
             email: trimmedEmail,
           },
+          delivery: {
+            method: deliveryMethod,
+            address: deliveryMethod === "delivery" ? trimmedDeliveryAddress : "",
+          },
+          orderDate,
           items: cartItems.map((item) => ({
             productId: item.productId,
             size: item.size,
@@ -316,6 +385,19 @@ export default function OrderPage() {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const focusFirstMissingCheckoutField = () => {
+    const firstFieldId = missingCheckoutFields?.[0]?.inputId;
+    setMissingCheckoutFields(null);
+
+    if (!firstFieldId) return;
+
+    window.setTimeout(() => {
+      const field = document.getElementById(firstFieldId);
+      field?.scrollIntoView({ behavior: "smooth", block: "center" });
+      field?.focus({ preventScroll: true });
+    }, 0);
   };
 
   const handleProofUpload = async () => {
@@ -451,7 +533,7 @@ export default function OrderPage() {
               </div>
             )}
 
-            <div className="mt-8 rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
+            <div id="customer-information" className="mt-8 rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#876443]">Customer information</p>
               <div className="mt-4 grid gap-4 md:grid-cols-2">
                 {!customerInfo.name.trim() || !customerInfo.phone.trim() ? (
@@ -463,6 +545,7 @@ export default function OrderPage() {
                 <label className="block text-sm font-medium text-slate-700">
                   <span className="mb-1.5 block">Name</span>
                   <input
+                    id="customer-name"
                     type="text"
                     value={customerInfo.name}
                     onChange={(event) =>
@@ -477,6 +560,7 @@ export default function OrderPage() {
                 <label className="block text-sm font-medium text-slate-700">
                   <span className="mb-1.5 block">Phone number</span>
                   <input
+                    id="customer-phone"
                     type="tel"
                     value={customerInfo.phone}
                     onChange={(event) =>
@@ -500,6 +584,79 @@ export default function OrderPage() {
                     className="w-full rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none transition focus:border-[#987451]"
                   />
                 </label>
+
+                <fieldset className="md:col-span-2">
+                  <legend className="mb-2 text-sm font-medium text-slate-700">Order type</legend>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {(["delivery", "pickup"] as const).map((method) => (
+                      <label
+                        key={method}
+                        className={[
+                          "flex cursor-pointer items-center gap-3 rounded-2xl border bg-white px-4 py-3 text-sm font-medium capitalize transition",
+                          deliveryMethod === method
+                            ? "border-[#76533F] ring-1 ring-[#76533F]"
+                            : "border-slate-200 hover:border-[#987451]",
+                        ].join(" ")}
+                      >
+                        <input
+                          type="radio"
+                          name="deliveryMethod"
+                          value={method}
+                          checked={deliveryMethod === method}
+                          onChange={() => setDeliveryMethod(method)}
+                          className="accent-[#76533F]"
+                        />
+                        {method}
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
+
+                <label className="block text-sm font-medium text-slate-700 md:col-span-2">
+                  <span className="mb-1.5 block">Delivery/Pick Up Date</span>
+                  <input
+                    id="order-date"
+                    ref={orderDateInputRef}
+                    type="date"
+                    value={orderDate}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      if (value && !isAllowedOrderDate(value)) {
+                        setOrderDate("");
+                        setOrderDateError("Weekends are unavailable. Choose a weekday at least two days from today.");
+                        return;
+                      }
+                      setOrderDate(value);
+                      setOrderDateError(null);
+                    }}
+                    required
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none transition focus:border-[#987451]"
+                  />
+                  <span className="mt-1.5 block text-xs font-normal text-slate-500">
+                    Choose a weekday at least two days from today. Saturdays and Sundays are unavailable.
+                  </span>
+                  {orderDateError ? (
+                    <span role="alert" className="mt-1.5 block text-xs font-medium text-red-700">
+                      {orderDateError}
+                    </span>
+                  ) : null}
+                </label>
+
+                {deliveryMethod === "delivery" ? (
+                  <label className="block text-sm font-medium text-slate-700 md:col-span-2">
+                    <span className="mb-1.5 block">Delivery address</span>
+                    <textarea
+                      id="delivery-address"
+                      value={deliveryAddress}
+                      onChange={(event) => setDeliveryAddress(event.target.value)}
+                      placeholder="Enter your complete delivery address"
+                      maxLength={500}
+                      rows={3}
+                      className="w-full resize-y rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none transition focus:border-[#987451]"
+                      required
+                    />
+                  </label>
+                ) : null}
               </div>
             </div>
           </section>
@@ -548,9 +705,20 @@ export default function OrderPage() {
                       <div className="mt-3 flex items-center justify-end gap-2">
                         <button
                           type="button"
-                          onClick={() => updateVariantQuantity(buildVariantKey(item.productId, item.size, item.toppings), -1)}
+                          onClick={() => {
+                            const key = buildVariantKey(item.productId, item.size, item.toppings);
+                            if (item.quantity === 1) {
+                              setCartItemToRemove({ key, productName: item.product.name });
+                              return;
+                            }
+                            updateVariantQuantity(key, -1);
+                          }}
                           className="flex h-7 w-7 items-center justify-center rounded-full bg-white/10 text-lg text-white hover:bg-white/15"
-                          aria-label={`Remove one ${item.product.name}`}
+                          aria-label={
+                            item.quantity === 1
+                              ? `Remove ${item.product.name} from order`
+                              : `Remove one ${item.product.name}`
+                          }
                         >
                           −
                         </button>
@@ -642,9 +810,7 @@ export default function OrderPage() {
               disabled={
                 isSubmitting ||
                 Boolean(qrisOrderId) ||
-                cartItems.length === 0 ||
-                !customerInfo.name.trim() ||
-                !customerInfo.phone.trim()
+                cartItems.length === 0
               }
               className="mt-6 w-full rounded-full bg-[#D6C4AB] px-4 py-3 text-sm font-bold text-[#35312D] transition hover:bg-[#E7D8C3] disabled:cursor-not-allowed disabled:opacity-60"
             >
@@ -674,6 +840,163 @@ export default function OrderPage() {
           </aside>
         </div>
       </div>
+
+      {missingCheckoutFields ? (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4">
+          <button
+            type="button"
+            aria-label="Close checkout information dialog"
+            onClick={() => setMissingCheckoutFields(null)}
+            className="absolute inset-0 h-full w-full cursor-default bg-[#24211f]/60 backdrop-blur-sm"
+          />
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="checkout-information-title"
+            aria-describedby="checkout-information-description"
+            className="relative z-10 my-auto w-full max-w-md overflow-hidden rounded-[2rem] border border-[#D6C4AB]/60 bg-[#FBF9F5] p-6 shadow-2xl sm:p-8"
+          >
+            <button
+              type="button"
+              onClick={() => setMissingCheckoutFields(null)}
+              aria-label="Close"
+              className="absolute right-5 top-5 flex h-10 w-10 items-center justify-center rounded-full border border-[#D6C4AB] text-xl leading-none text-[#624432] transition hover:bg-[#F3EDE3] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#76533F]"
+            >
+              ×
+            </button>
+
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#E7DCCB] text-[#624432]">
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                fill="none"
+                className="h-7 w-7"
+              >
+                <path
+                  d="M12 8v4m0 4h.01M10.3 3.86 1.82 18.5A2 2 0 0 0 3.55 21h16.9a2 2 0 0 0 1.73-2.5L13.7 3.86a2 2 0 0 0-3.4 0Z"
+                  stroke="currentColor"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="1.8"
+                />
+              </svg>
+            </div>
+
+            <p className="mt-6 text-xs font-semibold uppercase tracking-[0.18em] text-[#876443]">
+              One more step
+            </p>
+            <h2
+              id="checkout-information-title"
+              className="mt-2 pr-8 text-2xl font-black tracking-tight text-[#35312D]"
+            >
+              Let&apos;s complete your details
+            </h2>
+            <p
+              id="checkout-information-description"
+              className="mt-2 text-sm leading-6 text-slate-600"
+            >
+              Add the following information so we can prepare your order.
+            </p>
+
+            <ul className="mt-5 space-y-3 rounded-2xl border border-[#D6C4AB]/60 bg-white p-4">
+              {missingCheckoutFields.map((field) => (
+                <li key={field.inputId} className="flex items-center gap-3 text-sm font-medium text-[#35312D]">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#F3EDE3] text-xs font-bold text-[#76533F]">
+                    !
+                  </span>
+                  {field.label}
+                </li>
+              ))}
+            </ul>
+
+            <div className="mt-6 grid gap-3 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => setMissingCheckoutFields(null)}
+                className="rounded-full border border-[#D6C4AB] px-4 py-3 text-sm font-semibold text-[#624432] transition hover:bg-[#F3EDE3] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#76533F]"
+              >
+                Not now
+              </button>
+              <button
+                type="button"
+                onClick={focusFirstMissingCheckoutField}
+                className="rounded-full bg-[#76533F] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#624432] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#76533F]"
+              >
+                Complete details
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {cartItemToRemove ? (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center overflow-y-auto p-4">
+          <button
+            type="button"
+            aria-label="Close remove item confirmation"
+            onClick={() => setCartItemToRemove(null)}
+            className="absolute inset-0 h-full w-full cursor-default bg-[#24211f]/60 backdrop-blur-sm"
+          />
+          <section
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="remove-cart-item-title"
+            aria-describedby="remove-cart-item-description"
+            className="relative z-10 my-auto w-full max-w-md overflow-hidden rounded-[2rem] border border-red-100 bg-[#FBF9F5] p-6 shadow-2xl sm:p-8"
+          >
+            <button
+              type="button"
+              onClick={() => setCartItemToRemove(null)}
+              aria-label="Close"
+              className="absolute right-5 top-5 flex h-10 w-10 items-center justify-center rounded-full border border-[#D6C4AB] text-xl leading-none text-[#624432] transition hover:bg-[#F3EDE3]"
+            >
+              ×
+            </button>
+
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-red-100 text-red-700">
+              <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" className="h-7 w-7">
+                <path
+                  d="M3 6h18m-2 0-.9 14H5.9L5 6m4 0V4h6v2m-5 4v6m4-6v6"
+                  stroke="currentColor"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="1.8"
+                />
+              </svg>
+            </div>
+
+            <p className="mt-6 text-xs font-semibold uppercase tracking-[0.18em] text-red-700">
+              Remove from order
+            </p>
+            <h2 id="remove-cart-item-title" className="mt-2 pr-8 text-2xl font-black tracking-tight text-[#35312D]">
+              Remove this menu?
+            </h2>
+            <p id="remove-cart-item-description" className="mt-2 text-sm leading-6 text-slate-600">
+              <span className="font-semibold text-[#35312D]">{cartItemToRemove.productName}</span> will be removed from your order.
+            </p>
+
+            <div className="mt-6 grid gap-3 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => setCartItemToRemove(null)}
+                className="rounded-full border border-[#D6C4AB] px-4 py-3 text-sm font-semibold text-[#624432] transition hover:bg-[#F3EDE3]"
+              >
+                Keep menu
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  updateVariantQuantity(cartItemToRemove.key, -1);
+                  setCartItemToRemove(null);
+                }}
+                className="rounded-full bg-red-700 px-4 py-3 text-sm font-semibold text-white transition hover:bg-red-800"
+              >
+                Remove menu
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
 
       {activeProduct ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto p-4">
