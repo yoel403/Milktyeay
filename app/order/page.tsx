@@ -61,7 +61,11 @@ const earthToneProductAccents = [
   "from-[#C7A68D] via-[#E7DCCB] to-[#F3EDE3]",
 ];
 
-export default function OrderPage() {
+export default function OrderPage({
+  officeDelivery = false,
+}: {
+  officeDelivery?: boolean;
+} = {}) {
   const router = useRouter();
   const [products, setProducts] = useState<Product[]>([]);
   const [isLoadingProducts, setIsLoadingProducts] = useState(true);
@@ -85,8 +89,12 @@ export default function OrderPage() {
     key: string;
     productName: string;
   } | null>(null);
-  const [deliveryMethod, setDeliveryMethod] = useState<"delivery" | "pickup">("pickup");
+  const [deliveryMethod, setDeliveryMethod] = useState<"delivery" | "pickup">(
+    officeDelivery ? "delivery" : "pickup",
+  );
   const [deliveryAddress, setDeliveryAddress] = useState("");
+  const [deliveryDivision, setDeliveryDivision] = useState("");
+  const [deliveryFloor, setDeliveryFloor] = useState("");
   const [orderDate, setOrderDate] = useState("");
   const orderDateInputRef = useRef<HTMLInputElement>(null);
   const [orderDateError, setOrderDateError] = useState<string | null>(null);
@@ -314,6 +322,8 @@ export default function OrderPage() {
     const trimmedPhone = customerInfo.phone.trim();
     const trimmedEmail = customerInfo.email.trim();
     const trimmedDeliveryAddress = deliveryAddress.trim();
+    const trimmedDivision = deliveryDivision.trim();
+    const trimmedFloor = deliveryFloor.trim();
 
     if (cartItems.length === 0) {
       return;
@@ -322,8 +332,16 @@ export default function OrderPage() {
     const missingInformation: MissingCheckoutField[] = [
       !trimmedName ? { label: "Your name", inputId: "customer-name" } : null,
       !trimmedPhone ? { label: "Phone number", inputId: "customer-phone" } : null,
-      !orderDate ? { label: "Delivery/Pick up Date", inputId: "order-date" } : null,
-      deliveryMethod === "delivery" && !trimmedDeliveryAddress
+      !officeDelivery && !orderDate
+        ? { label: "Delivery/Pick up Date", inputId: "order-date" }
+        : null,
+      officeDelivery && !trimmedDivision
+        ? { label: "Divisi", inputId: "delivery-division" }
+        : null,
+      officeDelivery && !trimmedFloor
+        ? { label: "Lantai", inputId: "delivery-floor" }
+        : null,
+      !officeDelivery && deliveryMethod === "delivery" && !trimmedDeliveryAddress
         ? { label: "Delivery address", inputId: "delivery-address" }
         : null,
     ].filter((field): field is MissingCheckoutField => field !== null);
@@ -334,7 +352,7 @@ export default function OrderPage() {
       return;
     }
 
-    if (!isAllowedOrderDate(orderDate)) {
+    if (!officeDelivery && !isAllowedOrderDate(orderDate)) {
       setOrderDateError("Choose a weekday at least two days from today.");
       return;
     }
@@ -355,9 +373,14 @@ export default function OrderPage() {
           },
           delivery: {
             method: deliveryMethod,
-            address: deliveryMethod === "delivery" ? trimmedDeliveryAddress : "",
+            address:
+              deliveryMethod === "delivery"
+                ? officeDelivery
+                  ? `Divisi: ${trimmedDivision}, Lantai: ${trimmedFloor}`
+                  : trimmedDeliveryAddress
+                : "",
           },
-          orderDate,
+          orderDate: officeDelivery ? null : orderDate,
           items: cartItems.map((item) => ({
             productId: item.productId,
             size: item.size,
@@ -585,77 +608,121 @@ export default function OrderPage() {
                   />
                 </label>
 
-                <fieldset className="md:col-span-2">
-                  <legend className="mb-2 text-sm font-medium text-slate-700">Order type</legend>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {(["delivery", "pickup"] as const).map((method) => (
-                      <label
-                        key={method}
-                        className={[
-                          "flex cursor-pointer items-center gap-3 rounded-2xl border bg-white px-4 py-3 text-sm font-medium capitalize transition",
-                          deliveryMethod === method
-                            ? "border-[#76533F] ring-1 ring-[#76533F]"
-                            : "border-slate-200 hover:border-[#987451]",
-                        ].join(" ")}
-                      >
-                        <input
-                          type="radio"
-                          name="deliveryMethod"
-                          value={method}
-                          checked={deliveryMethod === method}
-                          onChange={() => setDeliveryMethod(method)}
-                          className="accent-[#76533F]"
-                        />
-                        {method}
-                      </label>
-                    ))}
-                  </div>
-                </fieldset>
-
-                <label className="block text-sm font-medium text-slate-700 md:col-span-2">
-                  <span className="mb-1.5 block">Delivery/Pick Up Date</span>
-                  <input
-                    id="order-date"
-                    ref={orderDateInputRef}
-                    type="date"
-                    value={orderDate}
-                    onChange={(event) => {
-                      const value = event.target.value;
-                      if (value && !isAllowedOrderDate(value)) {
-                        setOrderDate("");
-                        setOrderDateError("Weekends are unavailable. Choose a weekday at least two days from today.");
-                        return;
-                      }
-                      setOrderDate(value);
-                      setOrderDateError(null);
-                    }}
-                    required
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none transition focus:border-[#987451]"
-                  />
-                  <span className="mt-1.5 block text-xs font-normal text-slate-500">
-                    Choose a weekday at least two days from today. Saturdays and Sundays are unavailable.
-                  </span>
-                  {orderDateError ? (
-                    <span role="alert" className="mt-1.5 block text-xs font-medium text-red-700">
-                      {orderDateError}
+                {officeDelivery ? (
+                  <div className="md:col-span-2">
+                    <span className="mb-1.5 block text-sm font-medium text-slate-700">
+                      Order type
                     </span>
-                  ) : null}
-                </label>
+                    <p className="rounded-2xl border border-[#D6C4AB] bg-[#F3EDE3] px-4 py-3 text-sm font-semibold text-[#624432]">
+                      Delivery
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <fieldset className="md:col-span-2">
+                      <legend className="mb-2 text-sm font-medium text-slate-700">Order type</legend>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {(["delivery", "pickup"] as const).map((method) => (
+                          <label
+                            key={method}
+                            className={[
+                              "flex cursor-pointer items-center gap-3 rounded-2xl border bg-white px-4 py-3 text-sm font-medium capitalize transition",
+                              deliveryMethod === method
+                                ? "border-[#76533F] ring-1 ring-[#76533F]"
+                                : "border-slate-200 hover:border-[#987451]",
+                            ].join(" ")}
+                          >
+                            <input
+                              type="radio"
+                              name="deliveryMethod"
+                              value={method}
+                              checked={deliveryMethod === method}
+                              onChange={() => setDeliveryMethod(method)}
+                              className="accent-[#76533F]"
+                            />
+                            {method}
+                          </label>
+                        ))}
+                      </div>
+                    </fieldset>
+
+                    <label className="block text-sm font-medium text-slate-700 md:col-span-2">
+                      <span className="mb-1.5 block">Delivery/Pick Up Date</span>
+                      <input
+                        id="order-date"
+                        ref={orderDateInputRef}
+                        type="date"
+                        value={orderDate}
+                        onChange={(event) => {
+                          const value = event.target.value;
+                          if (value && !isAllowedOrderDate(value)) {
+                            setOrderDate("");
+                            setOrderDateError("Weekends are unavailable. Choose a weekday at least two days from today.");
+                            return;
+                          }
+                          setOrderDate(value);
+                          setOrderDateError(null);
+                        }}
+                        required
+                        className="w-full rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none transition focus:border-[#987451]"
+                      />
+                      <span className="mt-1.5 block text-xs font-normal text-slate-500">
+                        Choose a weekday at least two days from today. Saturdays and Sundays are unavailable.
+                      </span>
+                      {orderDateError ? (
+                        <span role="alert" className="mt-1.5 block text-xs font-medium text-red-700">
+                          {orderDateError}
+                        </span>
+                      ) : null}
+                    </label>
+                  </>
+                )}
 
                 {deliveryMethod === "delivery" ? (
-                  <label className="block text-sm font-medium text-slate-700 md:col-span-2">
-                    <span className="mb-1.5 block">Delivery address</span>
-                    <textarea
-                      id="delivery-address"
-                      value={deliveryAddress}
-                      onChange={(event) => setDeliveryAddress(event.target.value)}
-                      placeholder="Enter your complete delivery address"
-                      maxLength={500}
-                      rows={3}
-                      className="w-full resize-y rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none transition focus:border-[#987451]"
-                      required
-                    />
-                  </label>
+                  officeDelivery ? (
+                    <>
+                      <label className="block text-sm font-medium text-slate-700">
+                        <span className="mb-1.5 block">Divisi</span>
+                        <input
+                          id="delivery-division"
+                          type="text"
+                          value={deliveryDivision}
+                          onChange={(event) => setDeliveryDivision(event.target.value)}
+                          placeholder="Masukkan divisi"
+                          maxLength={100}
+                          className="w-full rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none transition focus:border-[#987451]"
+                          required
+                        />
+                      </label>
+                      <label className="block text-sm font-medium text-slate-700">
+                        <span className="mb-1.5 block">Lantai</span>
+                        <input
+                          id="delivery-floor"
+                          type="text"
+                          value={deliveryFloor}
+                          onChange={(event) => setDeliveryFloor(event.target.value)}
+                          placeholder="Masukkan lantai"
+                          maxLength={50}
+                          className="w-full rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none transition focus:border-[#987451]"
+                          required
+                        />
+                      </label>
+                    </>
+                  ) : (
+                    <label className="block text-sm font-medium text-slate-700 md:col-span-2">
+                      <span className="mb-1.5 block">Delivery address</span>
+                      <textarea
+                        id="delivery-address"
+                        value={deliveryAddress}
+                        onChange={(event) => setDeliveryAddress(event.target.value)}
+                        placeholder="Enter your complete delivery address"
+                        maxLength={500}
+                        rows={3}
+                        className="w-full resize-y rounded-2xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 outline-none transition focus:border-[#987451]"
+                        required
+                      />
+                    </label>
+                  )
                 ) : null}
               </div>
             </div>

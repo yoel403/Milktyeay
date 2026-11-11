@@ -164,15 +164,19 @@ export async function POST(request: Request) {
 
   const customer = parseCustomer(payload.customer);
   const delivery = parseDelivery(payload.delivery);
+  const hasOrderDate =
+    payload.orderDate !== undefined && payload.orderDate !== null && payload.orderDate !== "";
   const orderDate =
-    typeof payload.orderDate === "string" && isAllowedOrderDate(payload.orderDate)
+    hasOrderDate &&
+    typeof payload.orderDate === "string" &&
+    isAllowedOrderDate(payload.orderDate)
       ? payload.orderDate
       : null;
   const inputItems = parseItems(payload.items);
 
-  if (!customer || !delivery || !orderDate || !inputItems) {
+  if (!customer || !delivery || (hasOrderDate && !orderDate) || !inputItems) {
     return Response.json(
-      { error: "Please provide valid customer details, a weekday order date at least two days from today, and order items." },
+      { error: "Please provide valid customer details, a valid weekday order date if applicable, and order items." },
       { status: 400 },
     );
   }
