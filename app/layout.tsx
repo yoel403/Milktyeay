@@ -15,7 +15,12 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Milktyeay",
   description:
-    "Premium direct-to-consumer wellness essentials for focus, recovery, and daily energy.",
+    "Freshly brewed milk tea made to brighten your day. Explore the Milktyeay menu and find your new favorite drink.",
+  openGraph: {
+    title: "Milktyeay | Milk Tea",
+    description:
+      "Freshly brewed milk tea made to brighten your day. Explore the Milktyeay menu and find your new favorite drink.",
+  },
   icons: {
     icon: "/milktyeay-icon.png",
   },
